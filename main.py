@@ -77,7 +77,7 @@ def plots_vs_seq(x, y, x_label, y_label, title):
 
     return None
 
-def dispersion(df):
+def delta_method(df):
     '''
     Uses predefined thresholds for event categorization, ie Identification by
      dispersion threshold (I-DT).
@@ -88,20 +88,20 @@ def dispersion(df):
     return: None
     '''
 
-    title = ('Fixations and Saccades', 'Right Eye Fixations and Saccades')
+    fig, ax = plt.subplots(2,1,sharex=True)
+    title = ('Left Eye Fixations and Saccades', 'Right Eye Fixations and Saccades')
 
     dt = 0.01
 
-    for k in range(iter):
+    for k in range(2):
         saccades = []
         fixations = []
-        if k == 0 and iter == 2:
+        if k == 0:
             x = df['LeftEyeForward_x']
             y = df['LeftEyeForward_y']
-        elif k == 1 and iter == 2:
+        else:
             x = df['RightEyeForward_x']
             y = df['RightEyeForward_y']
-        else
 
         for i in range(1,len(df)-1):
             x0 = x[i-1]
