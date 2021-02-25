@@ -1,9 +1,12 @@
-import sys
-sys.path.insert(1, "/Users/ischoning/PycharmProjects/eyeMovements/eventdetect-master")
+# import sys
+# sys.path.insert(1, "/Users/ischoning/PycharmProjects/eyeMovements/eventdetect-master")
 import pandas as pd
 from pylab import *
 import matplotlib.pyplot as plt
 import numpy as np
+import scipy.stats as stats
+#import dispersion
+#import eventstream
 
 # from detect import *
 # from detect.sample import Sample
@@ -26,7 +29,8 @@ def make_df(file):
     '''
     # read in file
     data = pd.read_csv(file, sep=';', engine='python', decimal=',')
-    df = data[['LeftEyeForward_x', 'LeftEyeForward_y', 'LeftEyeForward_z',
+    df = data[['CaptureTime',
+               'LeftEyeForward_x', 'LeftEyeForward_y', 'LeftEyeForward_z',
                'RightEyeForward_x', 'RightEyeForward_y', 'RightEyeForward_z']]
 
     # format to floats
@@ -38,8 +42,8 @@ def make_df(file):
         df[col] = df[col].astype(float)
 
     # check output
-    print(df.head())
-    print(df.dtypes)
+    #print(df.head())
+    #print(df.dtypes)
 
     return df
 
@@ -49,35 +53,48 @@ def plot_eye_path(df):
     output: two scatter plots (x,y movements of each eye)
     return: None
     '''
-    df.plot.scatter(x='LeftEyeForward_x', y='LeftEyeForward_y')
-    df.plot.scatter(x='RightEyeForward_x', y='RightEyeForward_y')
-    plt.title('Left Eye Movement in the X,Y Plane')
+    fig, ax = plt.subplots(1,2, sharex = True, sharey = True)
+
+    ax[0].scatter(x=df['Ax_left'], y=df['Ay_left'])
+    ax[0].set_title('Left Eye Displacement')
+
+    ax[1].scatter(x=df['Ax_right'], y=df['Ay_right'])
+    ax[1].set_title('Right Eye Displacement')
+
+    plt.xlabel('degrees')
+    plt.ylabel('degrees')
+
     plt.show()
 
-    df.plot.scatter(x='RightEyeForward_x', y='RightEyeForward_y')
-    plt.title('Right Eye Movement in the X,Y Plane')
-    plt.show()
-
-def plots_vs_seq(x, y, x_label, y_label, title):
+def plot_vs_time(t, x, y):
     '''
     input: two values (x,y) to be plotted against time
     output: two plots
     return: None
     '''
 
-    # Left Eye x, y
-    end = len(x) if len(x) > len(y) else len(y)
-    l = range(0, end)
-
-    plt.plot(l, x, 'r', label=x_label)
-    plt.plot(l, y, 'b', label=y_label)
-    plt.title(title)
+    plt.plot(t, x, 'r', label='x')
+    plt.plot(t, y, 'b', label='y')
+    plt.title('Angular Displacement Over Time')
     plt.legend()
     plt.show()
 
     return None
 
-def delta_method(df):
+def find_thresh(df):
+    '''
+    :return: histogram of saccade speeds
+    '''
+    dx = np.diff(df['Angular_x'])
+    dy = np.diff(df['Angular_y'])
+    dt = np.diff(df['CaptureTime'] / 1000000)
+
+    for i in range(len(df)-1):
+        speed = abs(dy[i]/dx[i])
+
+    return thresh
+
+def disp(df):
     '''
     Uses predefined thresholds for event categorization, ie Identification by
      dispersion threshold (I-DT).
@@ -87,45 +104,82 @@ def delta_method(df):
     output: two plots classifying fixations and saccades for each eye
     return: None
     '''
+    new_df = df.copy()
 
-    fig, ax = plt.subplots(2,1,sharex=True)
-    title = ('Left Eye Fixations and Saccades', 'Right Eye Fixations and Saccades')
+    human_thresh = 2.6
 
-    dt = 0.01
+    dt = np.diff(df['CaptureTime'])
+    dx_dt = np.diff(df['Avg_angular_x'])/dt
+    dy_dt = np.diff(df['Avg_angular_y'])/dt
+    plot_vs_time(df['CaptureTime'][:len(df)-1],dx_dt,dy_dt)
 
-    for k in range(2):
-        saccades = []
-        fixations = []
-        if k == 0:
-            x = df['LeftEyeForward_x']
-            y = df['LeftEyeForward_y']
-        else:
-            x = df['RightEyeForward_x']
-            y = df['RightEyeForward_y']
+    saccades = []
+    fixations = []
 
-        for i in range(1,len(df)-1):
-            x0 = x[i-1]
-            x1 = x[i]
-            y0 = y[i-1]
-            y1 = y[i]
-            dx_dt = abs(x1-x0)/dt
-            dy_dt = abs(y1-y0)/dt
-            if dx_dt > 1 or dy_dt > 1:
-                # mark as saccade
-                saccades.append((i,1))
-            if dx_dt < dt and dy_dt < dt:
-                # mark as fixation
-                fixations.append((i,1))
+    to_drop = []
+    noise_count = 0
 
-        ax[k].broken_barh(saccades, yrange=(0,1), facecolors='orange', label='saccade')
-        ax[k].broken_barh(fixations, yrange=(0,1), facecolors='blue', label='fixations')
-        ax[k].set_title(title[k])
-        ax[k].legend()
+    for i in range(len(df)-1):
+        magnitude = sqrt(dx_dt[i]**2 + dy_dt[i]**2)
+
+        # remove noisy data
+        if magnitude >= human_thresh:
+            to_drop.append(i)
+            noise_count += 1
+        elif magnitude > 0:
+        # mark as saccade
+            saccades.append((i,1))
+        elif dx_dt < dt[i] and dy_dt < dt[i]:
+            # mark as fixation
+            fixations.append((i,1))
+
+        plt.broken_barh(saccades, yrange=(0,1), facecolors='orange', label='saccade')
+        plt.broken_barh(fixations, yrange=(0,1), facecolors='blue', label='fixations')
+        plt.title('Saccades and Fixations During Trial')
+        plt.legend()
+
 
     plt.show()
 
+    new_df = new_df.drop(new_df.index[to_drop])
+
+    print('Number of omissions due to noise:', noise_count)
+    return new_df
+
+def show_path(Ax, Ay):
+    plt.scatter(Ax, Ay)
+    plt.title('Angular Visual Movement (Degrees)')
+    plt.show()
+
+def show_angvel(Ax, Ay):
+
+    #for t in range(len(Ax)):
     return None
 
+def remove_outliers(data):
+    ''' source: https://www.statology.org/remove-outliers-python/ '''
+
+    # ----Method 1---- z-score method
+    #
+    # find absolute value of z-score for each observation
+    z = np.abs(stats.zscore(data))
+    # only keep rows in dataframe with all z-scores less than absolute value of 3
+    data_clean = data[(z < 3).all(axis=1)]
+
+    # ----Method 2---- interquartile range method
+    #
+    # #find Q1, Q3, and interquartile range for each column
+    # Q1 = data.quantile(q=.25)
+    # Q3 = data.quantile(q=.75)
+    # IQR = data.apply(stats.iqr)
+    #
+    # #only keep rows in dataframe that have values within 1.5*IQR of Q1 and Q3
+    # data_clean = data[~((data < (Q1-1.5*IQR)) | (data > (Q3+1.5*IQR))).any(axis=1)]
+    #
+
+    # find how many rows are left in the dataframe
+    print(data_clean.shape)
+    return data_clean
 
 def main():
 
@@ -133,9 +187,10 @@ def main():
     file_isabella = 'varjo_gaze_output_2021-02-10-17-22_isabella.csv' # sep=;
     file_james = 'varjo_gaze_output_2021-02-05_james.csv'  # sep=;
     file_mateusz = 'varjo_gaze_output_2021-02-05_mateusz.csv'  # sep=,
+    file_marek = pd.read_spss('1_interpolated_degrees.sav')
 
     # read in file and format
-    df = make_df(file_isabella)
+    df = make_df(file_james)
 
     # assign relevant data
     lx = df['LeftEyeForward_x']
@@ -144,34 +199,85 @@ def main():
     rx = df['RightEyeForward_x']
     ry = df['RightEyeForward_y']
     rz = df['RightEyeForward_z']
+    #t = df['CaptureTime']/np.tile(100000),len(df)) # nanoseconds
+    t = df['CaptureTime']
 
     # compute angular values
-    Ax_left = np.rad2deg(np.arctan2(lx, lz))
-    Ay_left = np.rad2deg(np.arctan2(ly, lz))
-    Ax_right = np.rad2deg(np.arctan2(rx, rz))
-    Ay_right = np.rad2deg(np.arctan2(ry, rz))
+    df['Ax_left'] = np.rad2deg(np.arctan2(lx, lz))
+    df['Ay_left'] = np.rad2deg(np.arctan2(ly, lz))
+    df['Ax_right'] = np.rad2deg(np.arctan2(rx, rz))
+    df['Ay_right'] = np.rad2deg(np.arctan2(ry, rz))
 
     # average visual angle between both eyes along each plane
-    Ax = average(Ax_left, Ax_right)
-    Ay = average(Ay_left, Ay_right)
-    df['Angular_x'] = Ax
-    df['Angular_y'] = Ay
+    df['Avg_angular_x'] = df[['Ax_left', 'Ax_right']].mean(axis = 1)
+    df['Avg_angular_y'] = df[['Ay_left', 'Ay_right']].mean(axis = 1)
 
-    # make 2D scatter plots of single eye movements in x,y plane
-    plot_eye_path(df)
+    # show vision path in averaged angular degrees
+    #show_path(df['Avg_angular_x'], df['Avg_angular_y'])
+    print('Length of capture time:', len(df['CaptureTime']))
+    print('Length of capture time differences:',
+          len(np.diff(df['CaptureTime']/1000000)))
 
-    # plot 1D x and y movement of each eye
-    plots_vs_seq(lx, ly, 'x', 'y', 'Left Eye Coordinates Over Time')
-    plots_vs_seq(rx, ry, 'x', 'y', 'Right Eye Coordinates Over Time')
-    plots_vs_seq(lx, rx, 'left eye', 'right eye', 'Movement Along X-Axis')
-    plots_vs_seq(ly, ry, 'left eye', 'right eye', 'Movement Along Y-Axis')
+    # # show vision path, separately for each eye
+    # plot_eye_path(df)
+
+    # show angular displacement over time, averaged over both eyes
+    #plot_vs_time(t, df['Avg_angular_x'], df['Avg_angular_y'])
+
+    # plot angular velocity
+    dt = np.diff(df['CaptureTime'])
+    dx_dt = np.diff(df['Avg_angular_x'])/dt
+    dy_dt = np.diff(df['Avg_angular_y'])/dt
+    #plot_vs_time(df['CaptureTime'][:len(df)-1],dx_dt,dy_dt)
+
+# ------ X --------
+    # remove nans
+    dx_dt = dx_dt[np.logical_not(np.isnan(dx_dt))]
+    print(np.isnan(dx_dt).sum())
+    plt.hist(dx_dt,50)
+    plt.xlabel('dx/dt: angular velocity in x')
+    plt.ylabel('number of occurrences')
+    plt.show()
+
+    # remove outliers
+    z = np.abs(stats.zscore(dx_dt))
+    # only keep rows in dataframe with all z-scores less than absolute value of 3
+    dx_dt = dx_dt[(z < 3)]
+    # plot histogram of angular velocities
+    plt.hist(dx_dt,50)
+    plt.xlabel('dx/dt: angular velocity in x')
+    plt.ylabel('number of occurrences')
+    plt.show()
+
+# ------ Y --------
+    # remove nans
+    dy_dt = dy_dt[np.logical_not(np.isnan(dy_dt))]
+    print(np.isnan(dy_dt).sum())
+    plt.hist(dy_dt,50)
+    plt.xlabel('dy/dt: angular velocity in y')
+    plt.ylabel('number of occurrences')
+    plt.show()
+
+    # remove outliers
+    z = np.abs(stats.zscore(dy_dt))
+    # only keep rows in dataframe with all z-scores less than absolute value of 3
+    dy_dt = dy_dt[(z < 3)]
+    # plot histogram of angular velocities
+    plt.hist(dy_dt,50)
+    plt.xlabel('dy/dt: angular velocity in y')
+    plt.ylabel('number of occurrences')
+    plt.show()
+
 
     # segment graph given a condition (display on plot and return locs)
-    delta_method(df)
+    #df_no_noise = disp(df)
+
 
 
     # smooth x and y movement using data from both eye and probability theory,
     # ie minimize noise (EyeLink algorithm)
+
+
 
     # next step: use LMS filter and HMM filter to identify fixation and saccade
     # compare results. MarkEye?
