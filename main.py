@@ -59,13 +59,32 @@ def plot_vs_time(t, x, y = [], title = None, y_axis = None):
     return None
 
 
-def make_hist(data, title, x_axis):
-    plt.hist(data, bins=100)
+def make_hist(data, title, x_axis, y_axis, density = False):
+    if density:
+        result, bin_edges = np.histogram(data, bins=len(data), density = True)
+        plt.hist(data, bins=len(data), density = True)
+    else:
+        plt.hist(data, bins=int(len(data)/2))
     plt.title(title)
-    plt.ylabel('number of occurrences')
+    plt.ylabel(y_axis)
     plt.xlabel(x_axis)
     plt.show()
 
+    if density:
+        return result, bin_edges
+    else: return None
+
+def pdf(data, title, x_axis, y_axis):
+    hist, bin_edges = make_hist(data, title, x_axis, y_axis, density = True)
+    mu = np.mean(data)
+    sigma = np.sqrt(np.var(data))
+    E = np.sum(data*hist) # expected value
+    V = np.sum(hist*np.square(data-mu)) # variance
+
+    print("hist sum:", np.sum(hist * np.diff(bin_edges))) # sanity check - should = 1
+    print("Expected Value:", E, "\nVariance:", V, "\ndata mean:", mu, "\ndata standard deviation:", sigma)
+
+    return E, V, mu, sigma
 
 def remove_outliers(data):
     ''' source: https://www.statology.org/remove-outliers-python/ '''
@@ -90,6 +109,7 @@ def remove_outliers(data):
 
     # find how many rows are left in the dataframe
     print(data_clean.shape)
+
     return data_clean
 
 
@@ -120,16 +140,16 @@ def main():
     df['Avg_angular_y'] = df[['Ay_left', 'Ay_right']].mean(axis=1)
 
     # show vision path in averaged angular degrees
-    show_path(df['Avg_angular_x'], df['Avg_angular_y'])
-    print('Length of capture time:', len(t))
-    print('Length of capture time differences:',
-          len(np.diff(t/1000000)))
+#    show_path(df['Avg_angular_x'], df['Avg_angular_y'])
+    # print('Length of capture time:', len(t))
+    # print('Length of capture time differences:',
+    #       len(np.diff(t/1000000)))
 
     # # show vision path, separately for each eye
-    plot_eye_path(df)
+#    plot_eye_path(df)
 
     # show angular displacement over time, averaged over both eyes
-    plot_vs_time(t, df['Avg_angular_x'], df['Avg_angular_y'], 'Angular Displacement Over Time', 'degrees')
+#    plot_vs_time(t, df['Avg_angular_x'], df['Avg_angular_y'], 'Angular Displacement Over Time', 'degrees')
 
     # plot angular velocity for x and y
     dt = np.diff(t) # aka isi
@@ -142,49 +162,13 @@ def main():
     plot_vs_time(t[:len(df)-1], dr, y = [], title = 'Combined Angular Velocity Over Time', y_axis = 'degrees per second')
 
     # show histogram of angular velocity
-    make_hist(df, 'Histogram of Angular Velocity', 'angular velocity')
+    make_hist(dr, 'Histogram of Angular Velocity', 'angular velocity', 'number of occurrences')
 
-    #
+    # make pdf
+    E, V, mu, var = pdf(dr, 'PDF of Angular Velocity', 'angular velocity', 'probability')
+
 
 """
-# ------ X --------
-    # remove nans
-    dx_dt = dx_dt[np.logical_not(np.isnan(dx_dt))]
-    print(np.isnan(dx_dt).sum())
-    plt.hist(dx_dt,50)
-    plt.xlabel('dx/dt: angular velocity in x')
-    plt.ylabel('number of occurrences')
-    plt.show()
-
-    # remove outliers
-    z = np.abs(stats.zscore(dx_dt))
-    # only keep rows in dataframe with all z-scores less than absolute value of 3
-    dx_dt = dx_dt[(z < 3)]
-    # plot histogram of angular velocities
-    plt.hist(dx_dt,50)
-    plt.xlabel('dx/dt: angular velocity in x')
-    plt.ylabel('number of occurrences')
-    plt.show()
-
-# ------ Y --------
-    # remove nans
-    dy_dt = dy_dt[np.logical_not(np.isnan(dy_dt))]
-    print(np.isnan(dy_dt).sum())
-    plt.hist(dy_dt,50)
-    plt.xlabel('dy/dt: angular velocity in y')
-    plt.ylabel('number of occurrences')
-    plt.show()
-
-    # remove outliers
-    z = np.abs(stats.zscore(dy_dt))
-    # only keep rows in dataframe with all z-scores less than absolute value of 3
-    dy_dt = dy_dt[(z < 3)]
-    # plot histogram of angular velocities
-    plt.hist(dy_dt,50)
-    plt.xlabel('dy/dt: angular velocity in y')
-    plt.ylabel('number of occurrences')
-    plt.show()
-
     # segment graph given a condition (display on plot and return locs)
     #df_no_noise = disp(df)
 
