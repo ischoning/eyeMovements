@@ -6,6 +6,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats as stats
 import math
+import matplotlib.transforms as mtransforms
+import hmm
+import baum_welch
+import settings
 
 
 def show_path(Ax, Ay):
@@ -38,21 +42,35 @@ def plot_eye_path(df):
 
     return None
 
-def plot_vs_time(t, x, y = [], title = None, y_axis = None):
+def plot_vs_time(t, x, y = [], title = None, y_axis = None, event = None):
     '''
     input: two values (x,y) to be plotted against time
-    output: two plots
     return: None
     '''
+
+    fig, ax = plt.subplots()
+
     if len(y) == 0:
-        plt.plot(t, x, 'r')
+        ax.plot(t, x, color = 'red')
+
+        # https://matplotlib.org/3.1.1/gallery/lines_bars_and_markers/fill_between_demo.html
+        if event is not None:
+            trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
+            min_val = min(x)
+            max_val = max(x)
+            ax.fill_between(t, min_val, max_val, where = event == 1,
+                            facecolor='green', alpha=0.5, transform=trans, label='fixation')
+            ax.fill_between(t, min_val, max_val, where = event == 0,
+                            facecolor='red', alpha=0.5, transform=trans, label='saccade')
+            ax.legend()
     else:
-        plt.plot(t, x, 'r', label='x')
-        plt.plot(t, y, 'b', label='y')
-        plt.legend()
-    plt.title(title)
-    plt.xlabel('timestamp')
-    plt.ylabel(y_axis)
+        ax.plot(t, x, color = 'r', label = 'x')
+        ax.plot(t, y, color = 'b', label = 'y')
+        ax.legend()
+
+    ax.set_title(title)
+    ax.set_xlabel('timestamp (ms)')
+    ax.set_ylabel(y_axis)
 
     plt.show()
 
@@ -74,53 +92,80 @@ def make_hist(data, title, x_axis, y_axis, density = False):
         return result, bin_edges
     else: return None
 
-def pdf(data, title, x_axis, y_axis):
+def pmf(data, title, x_axis, y_axis):
     hist, bin_edges = make_hist(data, title, x_axis, y_axis, density = True)
-    mu = np.mean(data)
-    sigma = np.sqrt(np.var(data))
-    E = np.sum(data*hist) # expected value
-    V = np.sum(hist*np.square(data-mu)) # variance
-
     print("hist sum:", np.sum(hist * np.diff(bin_edges))) # sanity check - should = 1
-    print("Expected Value:", E, "\nVariance:", V, "\ndata mean:", mu, "\ndata standard deviation:", sigma)
 
-    return E, V, mu, sigma
+    return None
 
-def remove_outliers(data):
-    ''' source: https://www.statology.org/remove-outliers-python/ '''
 
-    # ----Method 1---- z-score method
-    #
-    # find absolute value of z-score for each observation
-    z = np.abs(stats.zscore(data))
-    # only keep rows in dataframe with all z-scores less than absolute value of 3
-    data_clean = data[(z < 3).all(axis=1)]
+def label_event(event, states):
+    if len(states) == 0:
+        print("No states provided.")
+        return
+    if event == 1:
+        return states[1] # 'Fixation'
+    if event == 0:
+        return states[0] # 'Saccade'
+    return 'Other'
 
-    # ----Method 2---- interquartile range method
-    #
-    # #find Q1, Q3, and interquartile range for each column
-    # Q1 = data.quantile(q=.25)
-    # Q3 = data.quantile(q=.75)
-    # IQR = data.apply(stats.iqr)
-    #
-    # #only keep rows in dataframe that have values within 1.5*IQR of Q1 and Q3
-    # data_clean = data[~((data < (Q1-1.5*IQR)) | (data > (Q3+1.5*IQR))).any(axis=1)]
-    #
+def print_events(t, event, states):
+    events = []
+    event_label = label_event(event.iloc[0], states)
+    start = t.iloc[0]
+    n = 1
+    event_change = False
+    for i in range(len(event)):
+        if i == len(event)-1 or event.iloc[i] != event.iloc[i+1]:
+            event_change = True
+        if event_change:
+            end = t.iloc[i]
+            events.append([event_label, n, start, end])
+            if i != len(event)-1:
+                start = t.iloc[i+1]
+                event_label = label_event(event.iloc[i+1], states)
+                n = 1
+                event_change = False
+        else:
+            n += 1
 
-    # find how many rows are left in the dataframe
-    print(data_clean.shape)
+    print('=====================================================================')
 
-    return data_clean
+    for e in events:
+        print("%s for %d samples from %d ms to %d ms." % (e[0], e[1], e[2], e[3]))
 
+    print('=====================================================================')
+
+    print('Number of Fixation events:', sum(event==1))
+    print('Number of Saccade events:', sum(event==0))
+    print('Total number of events:', len(event))
+
+    return None
+
+def gaussian(mu, sigma, x):
+    return 1/sqrt(2*pi*sigma**2)*exp(-(x-mu)**2/(2*sigma**2))
+
+def normalize(d):
+    '''
+    input: dictionary
+    returns: normalized dictionary (sum of values = 1)
+    '''
+    #total = sum(d.values()) # sum not working...
+    dictlist = []
+    for value in d.values():
+        dictlist.append(value)
+    total = sum(dictlist)
+    d = {k: v / total for k, v in d.items()}
+    return d
 
 def main():
 
     # files
-    df = pd.read_csv('participant07_preprocessed172.csv')
+    df = pd.read_csv('/Users/ischoning/PycharmProjects/GitHub/data/participant08_preprocessed172.csv')
 
     # shorten dataset for better visuals and quicker results
     #df = df[int(len(df)/200):int(len(df)/100)]
-    df = df[0:int(len(df)/100)]
+    df = df[100:int(len(df)/500)]
 
     # assign relevant data
     lx = df['left_forward_x']
@@ -129,7 +174,7 @@ def main():
     rx = df['right_forward_x']
     ry = df['right_forward_y']
     rz = df['right_forward_z']
-    t = df['raw_timestamp']
+    t = df['timestamp_milis']
 
     # compute angular values
     df['Ax_left'] = np.rad2deg(np.arctan2(lx, lz))
@@ -152,32 +197,86 @@ def main():
 #    plot_vs_time(t, df['Avg_angular_x'], df['Avg_angular_y'], 'Angular Displacement Over Time', 'degrees')
 
     # plot angular velocity for x and y
-    dt = np.diff(t) # aka isi
+    # remove the last row so lengths of each column are consistent
+    dt = np.diff(t)  # aka isi
     dx = np.diff(df['Avg_angular_x'])
     dy = np.diff(df['Avg_angular_y'])
-    plot_vs_time(t[:len(df)-1],dx/dt,dy/dt, 'Angular Velocity Over Time', 'degrees per second')
+
+    df.drop(df.tail(1).index, inplace=True)
+    t = df['timestamp_milis']
+
+#    plot_vs_time(t,dx/dt,dy/dt, 'Angular Velocity Over Time', 'degrees per millisecond')
 
     # plot combined angular velocity
-    dr = np.sqrt(np.square(dx) + np.square(dy))
-    plot_vs_time(t[:len(df)-1], dr, y = [], title = 'Combined Angular Velocity Over Time', y_axis = 'degrees per second')
+    df['ang_vel'] = np.sqrt(np.square(dx) + np.square(dy))
+    ang_vel = df['ang_vel']
+#    plot_vs_time(t, ang_vel, y = [], title = 'Combined Angular Velocity Over Time', y_axis = 'degrees per millisecond')
 
     # show histogram of angular velocity
-    make_hist(dr, 'Histogram of Angular Velocity', 'angular velocity', 'number of occurrences')
+#    make_hist(ang_vel, 'Histogram of Angular Velocity', 'angular velocity', 'number of occurrences')
 
-    # make pdf
-    E, V, mu, var = pdf(dr, 'PDF of Angular Velocity', 'angular velocity', 'probability')
+    # make pmf
+    pmf(ang_vel, 'PMF of Angular Velocity', 'angular velocity', 'probability')
 
+    # if velocity is greater than 3 standard deviations from the mean of the pmf, classify the point as saccade, else fixation
+    # NOTE that the white space in the plot is due to jump in ms between events
+    states = ['Saccade', 'Fixation']
+    df['fix1 sac0'] = np.where(ang_vel <= 0.02, 1, 0)
+    event = df['fix1 sac0']
+    plot_vs_time(t, ang_vel, y=[], title='Combined Angular Velocity Over Time', y_axis='degrees per millisecond', event = event)
+    print_events(t, event = event, states = states)
 
-"""
-    # segment graph given a condition (display on plot and return locs)
-    #df_no_noise = disp(df)
+    # estimate priors (sample means)
+    mean_fix = np.mean(df[event==1]['ang_vel'])
+    mean_sac = np.mean(df[event==0]['ang_vel'])
+    std_fix = np.std(df[event==1]['ang_vel'])
+    std_sac = np.std(df[event==0]['ang_vel'])
+    print("Fixation: mean =", mean_fix, "standard deviation =", std_fix)
+    print("Saccade: mean =", mean_sac, "standard deviation =", std_sac)
 
-    # smooth x and y movement using data from both eye and probability theory,
-    # ie minimize noise (EyeLink algorithm)
+    ang_vel.to_pickle('ang_vel.pkl')
 
-    # next step: use LMS filter and HMM filter to identify fixation and saccade
-    # compare results. MarkEye?
-"""
+    # assuming underlying distrib is gaussian, find MLE mu and sigma
+
+    print('============== BEGIN VITERBI ==============')
+
+    # first run EM to get best match params (priors, trans, emission probabilities)
+    # then run Viterbi HMM algorithm to output the most likely sequence given the params calculated in EM
+    obs = ang_vel.astype(str)
+    obs = obs.tolist()
+    states = ['Sac', 'Fix']
+    start_p = {"Sac": 0.5, "Fix": 0.5}
+    trans_p = {
+        "Sac": {"Sac": 0.5, "Fix": 0.5},
+        "Fix": {"Sac": 0.5, "Fix": 0.5},
+    }
+    Sac = {}
+    Fix = {}
+    for o in obs:
+        x = float(o)
+        if o not in Sac:
+            Sac[o] = gaussian(mean_sac, std_sac, x)
+        if o not in Fix:
+            Fix[o] = gaussian(mean_fix, std_fix, x)
+    # normalize
+    Sac = normalize(Sac)
+    Fix = normalize(Fix)
+    emit_p = {"Sac": Sac, "Fix": Fix}
+    df['hidden_state'] = hmm.viterbi(obs, states, start_p, trans_p, emit_p)
+    #print(len(df['hidden_state']))
+
+    print('=============== END VITERBI ===============')
+
+    # Q's: Why is probability so small? Should I be working with logs?
+
+    settings.init()
+
+    print('============== BEGIN BAUM-WELCH ==============')
+
+    baum_welch.run(obs, states, start_p, trans_p, emit_p)
+
+    print('============== END BAUM-WELCH ==============')
+
 
 if __name__ == "__main__":
     # Testing

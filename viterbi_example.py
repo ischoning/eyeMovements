@@ -102,6 +102,7 @@ def dptable(V):
     for state in V[0]:
         yield "%.7s: " % state + " ".join("%.7s" % ("%f" % v[state]["prob"]) for v in V)
 
+
 obs = ("normal", "cold", "dizzy")
 states = ("Healthy", "Fever")
 start_p = {"Healthy": 0.6, "Fever": 0.4}

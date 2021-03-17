@@ -1,10 +1,17 @@
+import pandas as pd
+import numpy as np
+
+# https://en.wikipedia.org/wiki/Viterbi_algorithm#Example
 def viterbi(obs, states, start_p, trans_p, emit_p):
     V = [{}]
+
     for st in states:
         V[0][st] = {"prob": start_p[st] * emit_p[st][obs[0]], "prev": None}
+
     # Run Viterbi when t > 0
     for t in range(1, len(obs)):
         V.append({})
+
         for st in states:
             max_tr_prob = V[t - 1][states[0]]["prob"] * trans_p[states[0]][st]
             prev_st_selected = states[0]
@@ -23,6 +30,7 @@ def viterbi(obs, states, start_p, trans_p, emit_p):
     opt = []
     max_prob = 0.0
     best_st = None
+
     # Get most probable state and its backtrack
     for st, data in V[-1].items():
         if data["prob"] > max_prob:
@@ -36,7 +44,9 @@ def viterbi(obs, states, start_p, trans_p, emit_p):
         opt.insert(0, V[t + 1][previous]["prev"])
         previous = V[t + 1][previous]["prev"]
 
-    print ("The steps of states are " + " ".join(opt) + " with highest probability of %s" % max_prob)
+    print("The steps of states are " + " ".join(opt) + " with highest probability of %s" % max_prob)
+
+    return opt
 
 
 def dptable(V):
@@ -44,22 +54,3 @@ def dptable(V):
     yield " ".join(("%12d" % i) for i in range(len(V)))
     for state in V[0]:
         yield "%.7s: " % state + " ".join("%.7s" % ("%f" % v[state]["prob"]) for v in V)
-
-
-obs = ("","","")
-states = ("Fixation", "Saccade")
-start_p = {"Fixation": 0.5, "Saccade": 0.5}
-trans_p = {
-    "Fixation": {"Fixation": 0.5, "Saccade": 0.5},
-    "Saccade": {"Fixation": 0.5, "Saccade": 0.5},
-}
-emit_p = {
-    "Fixation": {"": 0.33, "": 0.33, "": 0.34},
-    "Saccade": {"": 0.33, "": 0.33, "": 0.34},
-}
-
-viterbi(obs,
-        states,
-        start_p,
-        trans_p,
-        emit_p)

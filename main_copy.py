@@ -186,10 +186,10 @@ def remove_outliers(data):
 def main():
 
     # files
-    file_isabella = 'varjo_gaze_output_2021-02-10-17-22_isabella.csv' # sep=;
-    file_james = 'varjo_gaze_output_2021-02-05_james.csv'  # sep=;
-    file_mateusz = 'varjo_gaze_output_2021-02-05_mateusz.csv'  # sep=,
-    file_marek = pd.read_spss('1_interpolated_degrees.sav')
+    file_isabella = 'dataIn/varjo_gaze_output_2021-02-10-17-22_isabella.csv'  # sep=;
+    file_james = 'dataIn/varjo_gaze_output_2021-02-05_james.csv'  # sep=;
+    file_mateusz = 'dataIn/varjo_gaze_output_2021-02-05_mateusz.csv'  # sep=,
+    file_marek = pd.read_spss('dataIn/1_interpolated_degrees.sav')
 
     # read in file and format
     df = make_df(file_marek)
