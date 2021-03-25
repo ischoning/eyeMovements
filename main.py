@@ -7,9 +7,8 @@ import numpy as np
 import scipy.stats as stats
 import math
 import matplotlib.transforms as mtransforms
-import hmm
+import viterbi
 import baum_welch
-import settings
 
 
 def show_path(Ax, Ay):
@@ -94,7 +93,7 @@ def make_hist(data, title, x_axis, y_axis, density = False):
 
 def pmf(data, title, x_axis, y_axis):
     hist, bin_edges = make_hist(data, title, x_axis, y_axis, density = True)
-    print("hist sum:", np.sum(hist * np.diff(bin_edges))) # sanity check - should = 1
+    #print("hist sum:", np.sum(hist * np.diff(bin_edges))) # sanity check - should = 1
 
     return None
 
@@ -142,8 +141,18 @@ def print_events(t, event, states):
 
     return None
 
+def dict_to_list(d):
+    '''
+    :param d: dictionary
+    :return: list of values in dictionary
+    '''
+    dictlist = []
+    for value in d.values():
+        dictlist.append(value)
+    return dictlist
+
 def gaussian(mu, sigma, x):
-    return 1/sqrt(2*pi*sigma**2)*exp(-(x-mu)**2/(2*sigma**2))
+    return 1.0/sqrt(2*pi*sigma**2)*exp(-(x-mu)**2/(2*sigma**2))
 
 def normalize(d):
     '''
@@ -151,9 +160,7 @@ def normalize(d):
     returns: normalized dictionary (sum of values = 1)
     '''
     #total = sum(d.values()) # sum not working...
-    dictlist = []
-    for value in d.values():
-        dictlist.append(value)
+    dictlist = dict_to_list(d)
     total = sum(dictlist)
     d = {k: v / total for k, v in d.items()}
     return d
@@ -185,16 +192,16 @@ def main():
     df['Avg_angular_y'] = df[['Ay_left', 'Ay_right']].mean(axis=1)
 
     # show vision path in averaged angular degrees
-#    show_path(df['Avg_angular_x'], df['Avg_angular_y'])
+    show_path(df['Avg_angular_x'], df['Avg_angular_y'])
     # print('Length of capture time:', len(t))
     # print('Length of capture time differences:',
     #       len(np.diff(t/1000000)))
 
     # # show vision path, separately for each eye
-#    plot_eye_path(df)
+    plot_eye_path(df)
 
     # show angular displacement over time, averaged over both eyes
-#    plot_vs_time(t, df['Avg_angular_x'], df['Avg_angular_y'], 'Angular Displacement Over Time', 'degrees')
+    plot_vs_time(t, df['Avg_angular_x'], df['Avg_angular_y'], 'Angular Displacement Over Time', 'degrees')
 
     # plot angular velocity for x and y
     # remove the last row so lengths of each column are consistent
@@ -205,15 +212,32 @@ def main():
     df.drop(df.tail(1).index, inplace=True)
     t = df['timestamp_milis']
 
-#    plot_vs_time(t,dx/dt,dy/dt, 'Angular Velocity Over Time', 'degrees per millisecond')
+    plot_vs_time(t,dx/dt,dy/dt, 'Angular Velocity Over Time', 'degrees per millisecond')
 
     # plot combined angular velocity
     df['ang_vel'] = np.sqrt(np.square(dx) + np.square(dy))
     ang_vel = df['ang_vel']
-#    plot_vs_time(t, ang_vel, y = [], title = 'Combined Angular Velocity Over Time', y_axis = 'degrees per millisecond')
+    plot_vs_time(t, ang_vel, y = [], title = 'Combined Angular Velocity Over Time', y_axis = 'degrees per millisecond')
+
+    plt.scatter(range(len(ang_vel)), ang_vel)
+    plt.show()
+    plt.scatter(ang_vel, ang_vel)
+    plt.show()
+
+    # plot angular acceleration for x and y
+    # remove the last row so lengths of each column are consistent
+    dt = np.diff(t)  # aka isi
+    dv = np.diff(df['ang_vel'])
+
+    df_ = df.copy()
+    df_.drop(df_.tail(1).index, inplace=True)
+    df_['ang_acc'] = dv/dt
+
+    # plot combined angular accleration
+    plot_vs_time(df_['timestamp_milis'],df_['ang_vel'], y = df_['ang_acc'], title = 'Combined Angular Acceleration Over Time', y_axis = 'degrees per millisecond')
 
     # show histogram of angular velocity
-#    make_hist(ang_vel, 'Histogram of Angular Velocity', 'angular velocity', 'number of occurrences')
+    make_hist(ang_vel, 'Histogram of Angular Velocity', 'angular velocity', 'number of occurrences')
 
     # make pmf
     pmf(ang_vel, 'PMF of Angular Velocity', 'angular velocity', 'probability')
@@ -238,42 +262,68 @@ def main():
 
     # assuming underlying distrib is gaussian, find MLE mu and sigma
 
-    print('============== BEGIN VITERBI ==============')
+    print('\n============== BEGIN VITERBI ==============')
 
     # first run EM to get best match params (priors, trans, emission probabilities)
     # then run Viterbi HMM algorithm to output the most likely sequence given the params calculated in EM
     obs = ang_vel.astype(str)
     obs = obs.tolist()
     states = ['Sac', 'Fix']
+    #p = math.log(0.5)
     start_p = {"Sac": 0.5, "Fix": 0.5}
     trans_p = {
         "Sac": {"Sac": 0.5, "Fix": 0.5},
         "Fix": {"Sac": 0.5, "Fix": 0.5},
     }
+    # Note: not possible to have two contiguous saccades without a fixation (or smooth pursuit)
+    # in between
     Sac = {}
     Fix = {}
     for o in obs:
         x = float(o)
         if o not in Sac:
             Sac[o] = gaussian(mean_sac, std_sac, x)
+            # p = gaussian(mean_sac, std_sac, x)
+            # if p == 0:
+            #     p = 0.0001
+            # Sac[o] = math.log(p)
         if o not in Fix:
             Fix[o] = gaussian(mean_fix, std_fix, x)
+            # p = gaussian(mean_fix, std_fix, x)
+            # if p == 0:
+            #     p = 0.0001
+            # Fix[o] = math.log(p)
     # normalize
-    Sac = normalize(Sac)
-    Fix = normalize(Fix)
+    #Sac = normalize(Sac)
+    #Fix = normalize(Fix)
     emit_p = {"Sac": Sac, "Fix": Fix}
-    df['hidden_state'] = hmm.viterbi(obs, states, start_p, trans_p, emit_p)
+    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
     #print(len(df['hidden_state']))
+    print(df['hidden_state'].value_counts())
 
     print('=============== END VITERBI ===============')
 
     # Q's: Why is probability so small? Should I be working with logs?
 
-    settings.init()
 
-    print('============== BEGIN BAUM-WELCH ==============')
+    print('\n============== BEGIN BAUM-WELCH ==============')
 
-    baum_welch.run(obs, states, start_p, trans_p, emit_p)
+    # re-format to comply with baum-welch function
+    # turn trans_p from dict to np array
+    transition = []
+    for d in trans_p.values():
+        transition.append(dict_to_list(d))
+    transition = np.array(transition)
+
+    # turn emit_p from dict to np array
+    emission = []
+    for d in emit_p.values():
+        emission.append(dict_to_list(d))
+    emission = np.array(emission)
+
+    start_probs = dict_to_list(start_p)
+
+    #baum_welch.run(obs, states, start_probs, transition, emission)
 
     print('============== END BAUM-WELCH ==============')
 
