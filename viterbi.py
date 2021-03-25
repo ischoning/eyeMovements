@@ -1,8 +1,7 @@
-import pandas as pd
-import numpy as np
+import math
 
 # https://en.wikipedia.org/wiki/Viterbi_algorithm#Example
-def viterbi(obs, states, start_p, trans_p, emit_p):
+def run(obs, states, start_p, trans_p, emit_p):
     V = [{}]
 
     for st in states:
@@ -45,6 +44,7 @@ def viterbi(obs, states, start_p, trans_p, emit_p):
         previous = V[t + 1][previous]["prev"]
 
     print("The steps of states are " + " ".join(opt) + " with highest probability of %s" % max_prob)
+    #print("The steps of states are " + " ".join(opt))
 
     return opt
 
