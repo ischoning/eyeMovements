@@ -1,34 +1,8 @@
 # source: https://github.com/hamzarawal/HMM-Baum-Welch-Algorithm
 
 import numpy as np
-import pandas as pd
-
-'''
-#generating initial probabilities
-
-#transition probabilities
-transition = np.array([[0.8,0.1],
-                       [0.1,0.8]])
-#Emission probabilities
-emission = np.array([[0.1,0.2,0.7],
-                     [0.7,0.2,0.1]])
-
-#defining states and sequence symbols
-states = ['H','C']
-states_dic = {'H':0, 'C':1}
-sequence_syms = {'1':0,'2':1,'3':2}
-sequence = ['1','2','3']
-
-#test sequence
-test_sequence = '331122313'
-test_sequence = [x for x in test_sequence]
-
-#probabilities of going to end state
-end_probs = [0.1, 0.1]
-#probabilities of going from start state
-start_probs = [0.5, 0.5]
-'''
-
+import math
+import viterbi
 
 #function to find forward probabilities
 def forward_probs():
@@ -70,7 +44,7 @@ def backward_probs():
                 node_values_bwd[j, -i] = sum(values)
 
     #start state value
-    start_state = [node_values_bwd[m,0] * emission[m, sequence_syms[test_sequence[0]]] for m in range(len(states))]
+    start_state = [node_values_bwd[m,0] + emission[m, sequence_syms[test_sequence[0]]] for m in range(len(states))]
     start_state = np.multiply(start_state, start_probs)
     start_state_val = sum(start_state)
     return node_values_bwd, start_state_val
@@ -100,32 +74,25 @@ def gamma_probs(forward, backward, forward_val):
 
     return gamma_probabilities
 
-def run(obs, states, start_probs, transition, emission):
+def run(obs, states_list, start_p, trans_p, emit_p):
     # define global variables
-    global states
-    states_dic = {states[0]: 0, states[1]: 1}
+    global states, start_probs, transition, emission, test_sequence, sequence_syms, end_probs
+    states, start_probs, transition, emission = states_list, start_p, trans_p, emit_p
 
-    # generating initial probabilities
-    sequence_syms = {}
-    sequence = []  # should these be a range of all possible theoretical observations or a list of all observations in the data?
-    test_sequence = []
-    i = 0
-    for o in obs:
-        o = str(o)
-        if o not in sequence_syms:
-            sequence_syms[o] = i
-            sequence.append(o)
-            i += 1
-        test_sequence.append(o)
+    test_sequence = obs  # list of strings of observations (angular velocities)
 
     # probabilities of going to end state <-- What is this?
     end_probs = [0.1, 0.1]
-    # probabilities of going from start state
-    start_probs = start_probs.values().tolist()
 
-    # set global variables
-    global transition, emission
-    global test_sequence, sequence_syms, start_probs, end_probs
+    states_dic = {}
+    for i in range(len(states)):
+        states_dic[states[i]] = i
+
+    # generating initial probabilities
+    sequence = np.unique(test_sequence)  # should these be a range of all possible theoretical observations or a list of all observations in the data?
+    sequence_syms = {}
+    for i in range(len(sequence)):
+        sequence_syms[sequence[i]] = i
 
     #performing iterations until convergence
 
@@ -153,7 +120,7 @@ def run(obs, states, start_probs, transition, emission):
         # print('Gamma Probs:')
         # print(np.matrix(gamma_probabilities))
 
-        #caclculating 'a' and 'b' matrices
+        #calculating 'a' and 'b' matrices
         a = np.zeros((len(states), len(states)))
         b = np.zeros((len(states), len(sequence_syms)))
 
@@ -200,5 +167,23 @@ def run(obs, states, start_probs, transition, emission):
         if (diff < 0.0000001):
             break
 
+    # update params with a, b to run viterbi
+    start_p = {"Sac": 0.5, "Fix": 0.5}# update from list to dict
+    # update transition and emission from list lists to dict
+    t = {}
+    for i in range(len(states)):
+        d = {}
+        for j in range(len(states)):
+            d[states[j]] = a[i,j]
+        t[states[i]] = d
+
+    e = {}
+    for i in range(len(states)):
+        d = {}
+        for j in range(len(obs)):
+            d[obs[j]] = b[i,j]
+        e[states[i]] = d
+
+    viterbi.run(obs, states, start_p, t, e)
 
     c = 1
