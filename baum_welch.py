@@ -167,23 +167,4 @@ def run(obs, states_list, start_p, trans_p, emit_p):
         if (diff < 0.0000001):
             break
 
-    # update params with a, b to run viterbi
-    start_p = {"Sac": 0.5, "Fix": 0.5}# update from list to dict
-    # update transition and emission from list lists to dict
-    t = {}
-    for i in range(len(states)):
-        d = {}
-        for j in range(len(states)):
-            d[states[j]] = a[i,j]
-        t[states[i]] = d
-
-    e = {}
-    for i in range(len(states)):
-        d = {}
-        for j in range(len(obs)):
-            d[obs[j]] = b[i,j]
-        e[states[i]] = d
-
-    viterbi.run(obs, states, start_p, t, e)
-
-    c = 1
+    return transition, emission
