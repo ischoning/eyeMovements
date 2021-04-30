@@ -10,6 +10,7 @@ import matplotlib.transforms as mtransforms
 import viterbi
 import baum_welch
 from scipy.interpolate import make_interp_spline, BSpline
+import preprocessing
 
 
 def show_path(x, y, targetx, targety):
@@ -216,6 +217,9 @@ def overview_plot(data):
 
 
 def main():
+    preprocessing
+
+    """
     # files
     file = '/Users/ischoning/PycharmProjects/GitHub/data/Nils9_sample_level_clean.csv'
 
@@ -318,9 +322,11 @@ def main():
     #%%
     # source/inspiration: Komogortsev "Hierarchical HMM for Eye Movement Classification"
     """
+    """
     STEP 0: Pre-processing
     Compute position, velocity, acceleration feature sequences.
     Select appropriate features for classification.
+    """
     """
     data = pd.DataFrame(columns=['sample_i','position','velocity','acceleration'])
     n = 100 # sample length
@@ -347,7 +353,7 @@ def main():
         spl = make_interp_spline(data.sample_i, data.loc[:,feature], k=3)
         y_smooth = spl(xnew)
  #       plot_vs_time(xnew, y_smooth, title = feature, x_axis="sample sequential number", y_axis=y_ax[i-1])
-
+"""
     #%%
     """
     STEP 1: First HMM Classification
