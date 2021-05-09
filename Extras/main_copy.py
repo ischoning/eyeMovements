@@ -274,10 +274,10 @@ def main():
 #    plot_vs_time(df_['timestamp_milis'],df_['ang_vel'], y = df_['ang_acc'], title = 'Combined Angular Acceleration Over Time', y_axis = 'degrees per millisecond')
 
     # show histogram of angular velocity
-#    make_hist(ang_vel, 'Histogram of Angular Velocity', 'angular velocity', 'number of occurrences')
+    make_hist(ang_vel, 'Histogram of Angular Velocity', 'angular velocity', 'number of occurrences')
 
     # make pmf
-#    pmf(ang_vel, 'PMF of Angular Velocity', 'angular velocity', 'probability')
+    pmf(ang_vel, 'PMF of Angular Velocity', 'angular velocity', 'probability')
 
     # if velocity is greater than 3 standard deviations from the mean of the pmf, classify the point as saccade, else fixation
     # NOTE that the white space in the plot is due to jump in ms between events
