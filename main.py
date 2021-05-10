@@ -107,17 +107,12 @@ def main():
     df = pd.read_csv(file, sep="\t", float_precision=None)
 
     # select eye data to analyze ('left' or 'right')
-    eye = 'right'
+    eye = 'left'
+
 
     #### STEP 1: Clean Outliers ####
     df = preprocessing.remove_outliers(df)
 
-    # plot results after removing outliers
-    plots.plot_path(df)
-    plots.plot_vs_time(df, eye = eye)
-
-
-    #### STEP 2: Filter Fixations ####
     # instantiate data according to eye, selected above
     if eye == 'right' or eye == 'Right':
         d = df.d_r
@@ -128,25 +123,34 @@ def main():
         v = df.vel_l
         a = df.accel_l
 
+    # plot results after removing outliers
+    plots.plot_path(df)
+    plots.plot_vs_time(df, feat = d, label = 'Amplitude', eye = eye)
+    plots.plot_vs_time(df, feat = v, label = 'Velocity', eye = eye)
+
+
+    #### STEP 2: Filter Fixations ####
+
     # plot velocity histogram
-    head = eye+'eye: '+'Velocity'
-    pmf, bin_edges = plots.pmf(v, title=head, x_axis='deg/s')
+    head = eye + ' eye: Amplitude'
+    hist, bin_edges = plots.plot_hist(d, title=head, x_axis='deg')
+    head = eye + ' eye: Velocity'
+    hist, bin_edges = plots.plot_hist(v, title=head, x_axis='deg/s')
 
     # sanity check:
-    print(pmf.sum())
-    print(np.sum(pmf*np.diff(bin_edges))) # should equal 1
-    print(len(pmf))
+    prob = hist/len(hist)
+    print(np.sum(prob))
 
     # calculate distribution characteristics
-    mu = np.mean(pmf)
-    sigma = np.std(pmf)
+    mu = np.mean(bin_edges)
+    sigma = np.std(bin_edges)
     print("mean:", mu, "std:", sigma)
 
     # basic threshold classification
-    df['event'] = np.where(v <= sigma, 'Fix', 'Sac')
-
-    # plot classification
-    plots.plot_events(df, eye = 'right')
+    # df['event'] = np.where(v <= sigma, 'Fix', 'Sac')
+    #
+    # # plot classification
+    # plots.plot_events(df, eye = 'right')
 
 """
 

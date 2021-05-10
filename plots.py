@@ -8,6 +8,8 @@ import matplotlib.transforms as mtransforms
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import IsolationForest
 
+global pltsize
+pltsize = (16,4)
 
 def plot_path(df):
     """ Show scatter plot of x and y position and target. """
@@ -21,27 +23,41 @@ def plot_path(df):
     plt.show()
 
 
-def plot_vs_time(df, eye = 'left'):
-    """ Plots angular position vs time. """
+def plot_vs_time(df, feat, label = '', eye = 'left'):
+    """
+    :param df: dataframe
+    :param feat: feature of the dataframe to plot (d, v, a)
+    :param label: {'Amplitude', 'Velocity', 'Acceleration'}
+    :param eye:
+    :return:
+    """
+    if label == '':
+        raise Exception('no label provided for plot title')
+
+    head = eye + ' eye: ' + label + ' vs Time'
+    if label == 'Amplitude': ylabel = 'deg'
+    elif label == 'Velocity': ylabel = 'deg/s'
+    elif label == 'Acceleration': ylabel = 'deg/s*s'
+    else: raise Exception("label should be either 'Amplitude', 'Velocity', or 'Acceleration'")
+
+    fig, ax = plt.subplots(figsize=pltsize)
+
     if eye == 'right' or eye == 'Right':
         x = df.right_angle_x
         y = df.right_angle_y
-        d = df.d_r
-        head = 'Right Eye: Position vs Time'
     else:
         x = df.left_angle_x
         y = df.left_angle_y
-        d = df.d_l
-        head = 'Left Eye: Position vs Time'
 
     # plot vs time
-    plt.plot(df.time, x, label='x')
-    plt.plot(df.time, y, label='y', color='red')
-    plt.plot(df.time, d, label='intersample distance traveled', color='green')
-    plt.legend()
-    plt.xlabel('time')
-    plt.ylabel('deg')
-    plt.title(head)
+    ax.plot(df.time, x, label='x')
+    ax.plot(df.time, y, label='y', color='red')
+    ax.plot(df.time, feat, label='intersample distance traveled', color='green')
+    ax.legend()
+    ax.set_xlabel('time (s)')
+    ax.set_ylabel(ylabel)
+    ax.set_title(head)
+
     plt.show()
 
 
@@ -51,7 +67,7 @@ def plot_events(df, eye = 'Left'):
         x = df.d_r
     else: x = df.d_l
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=pltsize)
 
     ax.plot(df.time, x, color='red')
 
@@ -65,7 +81,7 @@ def plot_events(df, eye = 'Left'):
                     facecolor='red', alpha=0.5, transform=trans, label='saccade')
     ax.legend()
 
-    ax.set_title(eye+'eye: '+'Classification of Angular Displacement Over Time')
+    ax.set_title(eye+' eye: '+'Classification of Angular Displacement Over Time')
     ax.set_xlabel('time (ms)')
     ax.set_ylabel('deg')
 
@@ -74,20 +90,16 @@ def plot_events(df, eye = 'Left'):
 
 def plot_hist(data, title, x_axis, density=False):
     """ Plot histogram of data passed in params. """
-    if density:
-        result, bin_edges = np.histogram(data, bins=len(data), density=True)
-        plt.hist(data, bins=len(data), density=True)
-    else:
-        plt.hist(data, bins=int(len(data) / 2))
+
+    result, bin_edges = np.histogram(data, bins=len(data), density=density)
+    plt.hist(data, bins=int(len(data)/2), density=density)
     plt.title(title)
     plt.ylabel('Count')
     plt.xlabel(x_axis)
     plt.show()
 
-    if density:
-        return result, bin_edges
-    else:
-        return None
+    return result, bin_edges
+
 
 def pmf(data, title='Velocity', x_axis='deg/s'):
     return plot_hist(data, title=title, x_axis=x_axis, density=True)
