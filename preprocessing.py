@@ -189,6 +189,7 @@ def remove_outliers(df):
     df.drop(df[df.d_vs_vel_l > 50].index, inplace = True)
     df.drop(df[df.d_vs_vel_r > 50].index, inplace = True)
     cond_3 = prev_len - len(df)
+    num_removed = len(bad_data) + cond_3
 
     df.drop(index=bad_data, inplace=True)
     df.reset_index(drop=True, inplace=True)
@@ -201,7 +202,7 @@ def remove_outliers(df):
     print("Intersample velocity equal to zero or greater than 1000 deg/s:", cond_2)
     print("Outliers:", cond_3)
 
-    print("\nlen of 'bad data':", len(bad_data))
+    print("\nlen of 'bad data':", num_removed)
     print("len of data after cleaning:", len(df))
 
     print("=============================================================")
