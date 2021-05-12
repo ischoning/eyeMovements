@@ -35,24 +35,41 @@ def plot_vs_time(df, feat, label = '', eye = 'left'):
         raise Exception('no label provided for plot title')
 
     head = eye + ' eye: ' + label + ' vs Time'
-    if label == 'Amplitude': ylabel = 'deg'
-    elif label == 'Velocity': ylabel = 'deg/s'
-    elif label == 'Acceleration': ylabel = 'deg/s*s'
-    else: raise Exception("label should be either 'Amplitude', 'Velocity', or 'Acceleration'")
+    if label == 'Amplitude':
+        ylabel = 'deg'
+        plt_label = 'intersample distance'
+    elif label == 'Velocity':
+        ylabel = 'deg/s'
+        plt_label = 'intersample velocity'
+    elif label == 'Acceleration':
+        ylabel = 'deg/s*s'
+        plt_label = 'intersample acceleration'
+    else:
+        raise Exception("label should be either 'Amplitude', 'Velocity', or 'Acceleration'")
 
     fig, ax = plt.subplots(figsize=pltsize)
 
     if eye == 'right' or eye == 'Right':
         x = df.right_angle_x
         y = df.right_angle_y
+        d = df.d_r
     else:
         x = df.left_angle_x
         y = df.left_angle_y
+        d = df.d_l
 
     # plot vs time
-    ax.plot(df.time, x, label='x')
-    ax.plot(df.time, y, label='y', color='red')
-    ax.plot(df.time, feat, label='intersample distance traveled', color='green')
+    if label == 'Amplitude':
+        ax.plot(df.time, x, label='x', linewidth = 0.5)
+        ax.plot(df.time, y, label='y', color='red', linewidth = 0.5)
+        ax.plot(df.time, feat, label=plt_label, color='green')
+    elif label == 'Velocity':
+        ax.plot(df.time, d, label = 'position', color = 'green', linewidth = 0.5)
+        ax.plot(df.time, feat, label=plt_label, color='orange')
+    elif label == 'Acceleration':
+        ax.plot(df.time, d, label='position', color='green', linewidth = 0.5)
+        ax.plot(df.time, df.v, label=plt_label, color='orange', linewidth = 0.5)
+        ax.plot(df.time, feat, label=plt_label, color='purple')
     ax.legend()
     ax.set_xlabel('time (s)')
     ax.set_ylabel(ylabel)
@@ -101,5 +118,5 @@ def plot_hist(data, title, x_axis, density=False):
     return result, bin_edges
 
 
-def pmf(data, title='Velocity', x_axis='deg/s'):
+def plot_pmf(data, title='Velocity', x_axis='deg/s'):
     return plot_hist(data, title=title, x_axis=x_axis, density=True)

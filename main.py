@@ -97,6 +97,35 @@ def gaussian(mu, sigma, x):
     return 1.0/sqrt(2*pi*sigma**2)*exp(-(x-mu)**2/(2*sigma**2))
 
 
+def sequence(df):
+    # determine the sequence of events
+    prev_st = df.event[0]
+    prev_t = df.time[0]
+    prev_amp = df.d[0]
+    sequence = []
+    count = 1
+    for i in range(1, len(df)):
+        st = df.event[i]
+        if st == prev_st:
+            count += 1
+        elif st != prev_st:
+            t = (df.time[i-1] - prev_t)*100
+            amp = abs(prev_amp - df.d[i-1])
+            sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t})
+            count = 1
+            prev_st = st
+            prev_t = df.time[i]
+            prev_amp = df.d[i]
+        if i == len(df) - 1:
+            t = (df.time[i-1] - prev_t) * 100
+            amp = abs(prev_amp - df.d[i-1])
+            sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t})
+
+    print("Sequence:", sequence)
+
+    return sequence
+
+
 def main():
 
     #### STEP 0: Load Data ####
@@ -115,42 +144,89 @@ def main():
 
     # instantiate data according to eye, selected above
     if eye == 'right' or eye == 'Right':
-        d = df.d_r
-        v = df.vel_r
-        a = df.accel_r
+        df['d'] = df.d_r
+        df['v'] = df.vel_r
+        df['a'] = df.accel_r
     else:
-        d = df.d_l
-        v = df.vel_l
-        a = df.accel_l
+        df['d'] = df.d_l
+        df['v'] = df.vel_l
+        df['a'] = df.accel_l
+
+    #df['v'] = np.convolve(df.vel_r, df.vel_l, mode='same')/(2*len(df))
+    #df['a'] = np.convolve(df.accel_r, df.accel_l, mode='same')
 
     # plot results after removing outliers
     plots.plot_path(df)
-    plots.plot_vs_time(df, feat = d, label = 'Amplitude', eye = eye)
-    plots.plot_vs_time(df, feat = v, label = 'Velocity', eye = eye)
+    plots.plot_vs_time(df, feat = df.d, label = 'Amplitude', eye = eye)
+    plots.plot_vs_time(df, feat = df.v, label = 'Velocity', eye = eye)
+    #plots.plot_vs_time(df, feat = df.a, label = 'Acceleration', eye=eye)
 
 
     #### STEP 2: Filter Fixations ####
 
     # plot velocity histogram
-    head = eye + ' eye: Amplitude'
-    hist, bin_edges = plots.plot_hist(d, title=head, x_axis='deg')
     head = eye + ' eye: Velocity'
-    hist, bin_edges = plots.plot_hist(v, title=head, x_axis='deg/s')
+    hist, bin_edges = plots.plot_hist(df.v, title=head, x_axis='deg/s')
 
     # sanity check:
     prob = hist/len(hist)
     print(np.sum(prob))
 
     # calculate distribution characteristics
-    mu = np.mean(bin_edges)
-    sigma = np.std(bin_edges)
+    mu = np.mean(df.v)
+    sigma = np.std(df.v)
+    med = np.median(df.v)
     print("mean:", mu, "std:", sigma)
+    print("median:", med)
+
+    # create fixation gaussian
+    fix = df.v[df.v<=mu]
+    mu_fix = np.mean(fix)
+    sigma_fix = np.std(fix)
+    med_fix = np.median(fix)
+    print("fix mean:", mu_fix, "fix std:", sigma_fix)
+    print("fix median:", med_fix)
+    plt.hist(fix, bins = int(len(fix)/2), normed=True)
+    y = gaussian(mu_fix, sigma_fix, fix)
+    plt.plot(fix, y, color = 'green')
+    plt.title('Fixations')
+    plt.show()
 
     # basic threshold classification
-    # df['event'] = np.where(v <= sigma, 'Fix', 'Sac')
-    #
-    # # plot classification
-    # plots.plot_events(df, eye = 'right')
+    df['event'] = np.where(df.v <= mu_fix+3*sigma_fix, 'Fix', 'Sac')
+
+    # plot classification
+    plots.plot_events(df, eye = 'right')
+
+
+    #### STEP 3: Filter Saccades Using Carpenter's Theorem ####
+
+    # create sequence of events
+    seq = pd.DataFrame(sequence(df))
+
+    # plot amplitude and velocity of "Sac's" along with ideal (Carpenter's: D = 21 + 2.2A, D~ms, A~deg)
+    sacs = seq[seq.State == 'Sac']
+    plt.scatter(sacs.Amplitude, sacs.Duration_ms, label = "'saccade' samples")
+    x = linspace(min(sacs.Amplitude),max(sacs.Amplitude))
+    y = 21 + 2.2*x     # Carpenter's Theorem
+    plt.plot(x, y, color = 'green', label = 'D = 21 + 2.2A')
+    head = '[' + eye + ' eye] Saccades: Amplitude vs Duration'
+    plt.title(head)
+    plt.xlabel('amplitude (deg)')
+    plt.ylabel('duration (ms)')
+    plt.legend()
+    plt.show()
+
+    print("========= FULL SEQUENCE =========")
+    print(seq)
+    print("========= SACS =========")
+    print(sacs)
+
+    # calculate error rate
+    df['error'] = (abs(sacs.Duration_ms - (21+2.2*sacs.Amplitude))/(21+2.2*sacs.Amplitude))*100
+    print("Average Error:", np.mean(df.error), "%")
+
+    # classify "Sac" into "Sac" or "Other" depending on error rate with Carpenter's Theorem
 
 """
 
