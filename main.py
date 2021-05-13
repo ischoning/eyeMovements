@@ -109,7 +109,7 @@ def sequence(df):
         if st == prev_st:
             count += 1
         elif st != prev_st:
-            t = (df.time[i-1] - prev_t)*100
+            t = (df.time[i-1] - prev_t)*1000
             amp = abs(prev_amp - df.d[i-1])
             sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t})
             count = 1
@@ -117,7 +117,7 @@ def sequence(df):
             prev_t = df.time[i]
             prev_amp = df.d[i]
         if i == len(df) - 1:
-            t = (df.time[i-1] - prev_t) * 100
+            t = (df.time[i-1] - prev_t) * 1000
             amp = abs(prev_amp - df.d[i-1])
             sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t})
 
@@ -198,6 +198,28 @@ def main():
     # plot classification
     plots.plot_events(df, eye = 'right')
 
+    #### FILTER SACCADES ####
+
+    # create non-fixation gaussian
+    sac = df.v[df.v > mu]
+    mu_sac = np.mean(sac)
+    sigma_sac = np.std(sac)
+    med_sac = np.median(sac)
+    print("non-fix mean:", mu_sac, "non-fix std:", sigma_sac)
+    print("non-fix median:", med_sac)
+    plt.hist(sac, bins=int(len(sac) / 2), normed=True)
+    y = gaussian(mu_sac, sigma_sac, sac)
+    plt.plot(sac, y, color='green')
+    plt.title('Non-Fixations')
+    plt.show()
+
+    # basic threshold classification
+    df['event2'] = np.where(df.v > mu_sac + 3 * sigma_sac, 'Sac', 'SmP')
+    df.event = np.where(df.event != 'Fix', df.event2, 'Fix')
+
+    # plot classification
+    plots.plot_events(df, eye='right')
+
 
     #### STEP 3: Filter Saccades Using Carpenter's Theorem ####
 
@@ -206,7 +228,7 @@ def main():
 
     # plot amplitude and velocity of "Sac's" along with ideal (Carpenter's: D = 21 + 2.2A, D~ms, A~deg)
     sacs = seq[seq.State == 'Sac']
-    plt.scatter(sacs.Amplitude, sacs.Duration_ms, label = "'saccade' samples")
+    plt.scatter(sacs.Amplitude, sacs.Duration_ms, label = "'non-fixation' samples")
     x = linspace(min(sacs.Amplitude),max(sacs.Amplitude))
     y = 21 + 2.2*x     # Carpenter's Theorem
     plt.plot(x, y, color = 'green', label = 'D = 21 + 2.2A')
@@ -219,7 +241,7 @@ def main():
 
     print("========= FULL SEQUENCE =========")
     print(seq)
-    print("========= SACS =========")
+    print("========= SAC SEQUENCE =========")
     print(sacs)
 
     # calculate error rate

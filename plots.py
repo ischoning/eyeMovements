@@ -94,8 +94,14 @@ def plot_events(df, eye = 'Left'):
     max_val = max(x)
     ax.fill_between(df.time, min_val, max_val, where=df.event == 'Fix',
                     facecolor='green', alpha=0.5, transform=trans, label='fixation')
-    ax.fill_between(df.time, min_val, max_val, where=df.event == 'Sac',
-                    facecolor='red', alpha=0.5, transform=trans, label='saccade')
+    try:
+        ax.fill_between(df.time, min_val, max_val, where=df.event == 'SmP',
+                        facecolor='red', alpha=0.5, transform=trans, label='smooth pursuit')
+        ax.fill_between(df.time, min_val, max_val, where=df.event == 'Sac',
+                        facecolor='blue', alpha=0.5, transform=trans, label='saccade')
+    except:
+        ax.fill_between(df.time, min_val, max_val, where=df.event == 'Sac',
+                        facecolor='blue', alpha=0.5, transform=trans, label='other')
     ax.legend()
 
     ax.set_title(eye+' eye: '+'Classification of Angular Displacement Over Time')
