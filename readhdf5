@@ -1,0 +1,62 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue May 18 17:20:48 2021
+
+@author: pgba
+
+This file converts an hdf5 file to a set of csv files, one for each dataset
+
+Usage:
+    
+    readhdf5 filename.hdf5 ...
+    
+creates a subdirectory "filename" and (over)writes datasets in that subdir
+
+"""
+
+import sys
+import os
+
+import numpy as np
+import pandas as pd
+import h5py 
+           
+
+# https://stackoverflow.com/questions/44883175/how-to-list-all-datasets-in-h5py-file
+# we need this in favour of pd.HDFStore.walk which is broken currently for our purpose
+
+def get_dataset_keys(f):
+    keys = []
+    f.visit(lambda key : keys.append(key) if type(f[key]) is h5py._hl.dataset.Dataset else None)
+    return keys
+
+def sanitize(fnam):
+    return fnam.replace("/", "_")
+
+def convert_hdf5(fnam):
+    dnam = os.path.splitext(fnam)[0] + '/'
+    
+    try:
+        os.mkdir(dnam) # OK if exists
+    except:
+        pass
+    
+    with h5py.File(fnam, 'r') as f:
+        for k in get_dataset_keys(f):
+            print("    Dataset: %s" % k, file=sys.stderr)
+            ds = pd.DataFrame(np.array(f[k])) # numpy needed to get columns names correct!
+            ds.to_csv(dnam + sanitize(k) + '.csv', sep=';')
+ 
+    
+if __name__ == "__main__":
+    
+    if len(sys.argv)<2:
+        print("Usage: %s filename.hdf5 [...]" % sys.argv[0], file=sys.stderr)
+        exit(1)
+
+
+    for fnam in sys.argv[1:]:
+        print("Converting %s" % fnam, file=sys.stderr)
+
+        convert_hdf5(fnam)
