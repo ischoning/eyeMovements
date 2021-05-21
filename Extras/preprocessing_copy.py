@@ -11,7 +11,7 @@ import matplotlib.transforms as mtransforms
 import viterbi
 import baum_welch
 from scipy.interpolate import make_interp_spline, BSpline
-from Sample import Sample
+from Sample_hdf5 import Sample
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import IsolationForest
 import viterbi

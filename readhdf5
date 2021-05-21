@@ -14,13 +14,13 @@ Usage:
 creates a subdirectory "filename" and (over)writes datasets in that subdir
 
 """
-
+#from __future__ import print_function
 import sys
 import os
 
 import numpy as np
 import pandas as pd
-import h5py 
+import h5py
            
 
 # https://stackoverflow.com/questions/44883175/how-to-list-all-datasets-in-h5py-file

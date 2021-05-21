@@ -32,24 +32,53 @@ def run_kmeans(df, eye = 'right'):
 def remove_outliers(df):
     """
     :param df: a dataframe with the below columns
-    :param eye: left or right eye, defaults to left eye if no value provided
     :return: a dataframe cleaned from outliers
     """
 
-    df = df[['time', 'dt', 'device_time', 'left_pupil_measure1', 'right_pupil_measure1', 'target_angle_x', 'target_angle_y', 'right_gaze_x',
-             'right_gaze_y', 'left_angle_x', 'left_angle_y', 'right_angle_x', 'right_angle_y']]
     len_init = len(df)
 
     # sample rate: 100 samples per sec
-    #df = df[:500]
+    df = df[:1000]
 
     # Remove NA's
     df.replace([np.inf, -np.inf], np.nan)
     df.dropna(inplace=True)
+    df.reset_index(drop=True, inplace=True)
     len_na = len_init - len(df)
 
-    # Calculate amplitude, velocity, acceleration, change in acceleration
+
+    # Smooth using kernel windows of sizes 3, 5, 7
+    window_size = 7
+    data = (df.left_angle_x, df.left_angle_y, df.right_angle_x, df.right_angle_y)
+    for i in range(len(df)-window_size):
+        for elem in data:
+            # if first and last elements in window have less than 0.5 deg difference
+            if abs(elem[i] - elem[i+window_size-1]) < 0.5:
+                m = (elem[i] + elem[i+window_size-1])/2.0
+                # set all elements in between equal to their average
+                for j in range(i+1, i+window_size-1):
+                    elem[j] = m
+
+    df.left_angle_x = signal.savgol_filter(df.loc[:, 'left_angle_x'], window_length=101, polyorder=3)
+    df.left_angle_y = signal.savgol_filter(df.loc[:, 'left_angle_y'], window_length=101, polyorder=3)
+    df.right_angle_x = signal.savgol_filter(df.loc[:, 'right_angle_x'], window_length=101, polyorder=3)
+    df.right_angle_y = signal.savgol_filter(df.loc[:, 'right_angle_y'], window_length=101, polyorder=3)
+
     df['isi'] = np.diff(df.time, prepend=0)
+
+    # Calculate target
+    df['target_d'] = df.target_angle_x + df.target_angle_y
+    del_target_d = np.diff(df.target_d, prepend=0)
+    df['target_vel'] = abs(del_target_d) / df.isi
+    for i in range(1,len(df)-1):
+        prev = df.target_vel[i-1]
+        next = df.target_vel[i+1]
+        if df.target_vel[i] == 0 and prev != 0 and next != 0:
+            df.target_vel[i] = abs(next+prev)/2.0
+    del_target_vel = np.diff(df.target_vel, prepend=0)
+    df['target_accel'] = abs(del_target_vel) / df.isi
+
+    # Calculate amplitude, velocity, acceleration, change in acceleration
 
     del_x_r = np.diff(df.right_angle_x, prepend=0)
     del_y_r = np.diff(df.right_angle_y, prepend=0)

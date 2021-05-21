@@ -8,8 +8,8 @@ import scipy.stats as stats
 import math
 import viterbi
 import baum_welch
-import preprocessing
-import plots
+import preprocessing_hdf5
+import plots_hdf5
 
 
 def clean_sequence(df):
@@ -130,59 +130,39 @@ def main():
 
     #### STEP 0: Load Data ####
     # files
-    file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_4_0_0.txt'
+    file = '/Users/ischoning/PycharmProjects/GitHub/data/hdf5/events_58/data_collection_events_eyetracker_MonocularEyeSampleEvent.csv'
 
     # create dataframe
-    df = pd.read_csv(file, sep="\t", float_precision=None)
-    df = df[['time', 'dt', 'device_time', 'left_pupil_measure1', 'right_pupil_measure1', 'target_angle_x', 'target_angle_y',
-         'right_gaze_x', 'right_gaze_y', 'left_angle_x', 'left_angle_y', 'right_angle_x', 'right_angle_y']]
-
-    # select eye data to analyze ('left' or 'right')
-    eye = 'left'
+    df = pd.read_csv(file, sep=";", float_precision=None)
 
 
     #### STEP 1: Clean Outliers ####
-    df = preprocessing.remove_outliers(df)
-
-    # instantiate data according to eye, selected above
-    if eye == 'right' or eye == 'Right':
-        df['d'] = df.d_r
-        df['v'] = df.vel_r
-        df['a'] = df.accel_r
-    else:
-        df['d'] = df.d_l
-        df['v'] = df.vel_l
-        df['a'] = df.accel_l
-
-    #df['v'] = np.convolve(df.vel_r, df.vel_l, mode='same')/(2*len(df))
-    #df['a'] = np.convolve(df.accel_r, df.accel_l, mode='same')
+    df = preprocessing_hdf5.remove_outliers(df, process = True)
 
     # plot results after removing outliers
-    plots.plot_path(df)
-    plots.plot_vs_time(df, feat = df.d, label ='Amplitude', eye = eye)
-    plots.plot_vs_time(df, feat = df.v, label ='Velocity', eye = eye)
-    #plots.plot_vs_time(df, feat = df.a, label = 'Acceleration', eye=eye)
+    plots_hdf5.plot_path(df)
+    plots_hdf5.plot_vs_time(df, feat = df.d, label ='Amplitude')
+    plots_hdf5.plot_vs_time(df, feat = df.vel, label ='Velocity')
 
 
     #### STEP 2: Filter Fixations ####
 
     # plot velocity histogram
-    head = eye + ' eye: Velocity'
-    hist, bin_edges = plots.plot_hist(df, eye, title=head, x_axis='deg/s')
+    hist, bin_edges = plots_hdf5.plot_hist(df, title='Velocity', x_axis='deg/s')
 
     # sanity check:
     prob = hist/len(hist)
     print(np.sum(prob))
 
     # calculate distribution characteristics
-    mu = np.mean(df.v)
-    sigma = np.std(df.v)
-    med = np.median(df.v)
+    mu = np.mean(df.vel)
+    sigma = np.std(df.vel)
+    med = np.median(df.vel)
     print("mean:", mu, "std:", sigma)
     print("median:", med)
 
     # create fixation gaussian
-    fix = df.v[df.v<=mu]
+    fix = df.vel[df.vel<=mu]
     mu_fix = np.mean(fix)
     sigma_fix = np.std(fix)
     med_fix = np.median(fix)
@@ -195,15 +175,15 @@ def main():
     plt.show()
 
     # basic threshold classification
-    df['event'] = np.where(df.v <= mu_fix+3*sigma_fix, 'Fix', 'Sac')
+    df['event'] = np.where(df.vel <= mu_fix+3*sigma_fix, 'Fix', 'Sac')
 
     # plot classification
-    plots.plot_events(df, eye ='right')
+    plots_hdf5.plot_events(df)
 
     #### FILTER SACCADES ####
 
     # create non-fixation gaussian
-    sac = df.v[df.v > mu]
+    sac = df.vel[df.vel > mu]
     mu_sac = np.mean(sac)
     sigma_sac = np.std(sac)
     med_sac = np.median(sac)
@@ -216,11 +196,11 @@ def main():
     plt.show()
 
     # basic threshold classification
-    df['event2'] = np.where(df.v > mu_sac + 3 * sigma_sac, 'Sac', 'SmP')
+    df['event2'] = np.where(df.vel > mu_sac + 3 * sigma_sac, 'Sac', 'SmP')
     df.event = np.where(df.event != 'Fix', df.event2, 'Fix')
 
     # plot classification
-    plots.plot_events(df, eye='right')
+    plots_hdf5.plot_events(df)
 
 
     #### STEP 3: Filter Saccades Using Carpenter's Theorem ####
@@ -234,7 +214,7 @@ def main():
     x = linspace(min(sacs.Amplitude),max(sacs.Amplitude))
     y = 21 + 2.2*x     # Carpenter's Theorem
     plt.plot(x, y, color = 'green', label = 'D = 21 + 2.2A')
-    head = '[' + eye + ' eye] Saccades: Amplitude vs Duration'
+    head = 'Saccades: Amplitude vs Duration'
     plt.title(head)
     plt.xlabel('amplitude (deg)')
     plt.ylabel('duration (ms)')
