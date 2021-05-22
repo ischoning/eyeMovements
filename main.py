@@ -20,11 +20,11 @@ from detect.intersamplevelocity import IntersampleVelocity
 
 def clean_sequence(df):
     # determine the sequence of events
-    prev_st = df.hidden_state[0]
+    prev_st = df.event[0]
     sequence = []
     count = 1
     for i in range(1, len(df)):
-        st = df.hidden_state[i]
+        st = df.event[i]
         if st == prev_st:
             count += 1
         elif st != prev_st:
@@ -75,13 +75,13 @@ def label_fixes(df, eye, ws = 0, thresh = 0, method='IDT'):
         starts.append(f.get_start())
         ends.append(f.get_end())
         # print(f)
-    print("Number of fix events:", len(centers))
-    print("Number of fix samples:", np.sum(num_samples))
+    #print("Number of fix events:", len(centers))
+    #print("Number of fix samples:", np.sum(num_samples))
 
     # label the fixations in the dataframe
     df['event'] = 'other'
     count = 0
-    print('len(centers):', len(centers))
+    #print('len(centers):', len(centers))
     for i in range(len(starts)):
         df.loc[starts[i]:ends[i], ("event")] = 'fix'
         # if the end of the data is all fixations
@@ -93,8 +93,13 @@ def label_fixes(df, eye, ws = 0, thresh = 0, method='IDT'):
             df.loc[ends[i]:starts[i + 1], ("event")] = 'fix'
     # print(count)
 
+    # # label the saccades using velocity threshold (22 deg/s according to Houpt)
+    # df['event'] = np.where(df.v >= 22, 'sac', df.event)
+
     # plot classification
     plots.plot_events(df, eye=eye, method = method)
+
+    return df
 
 
 def print_events(df):
@@ -138,9 +143,11 @@ def gaussian(mu, sigma, x):
 
 def sequence(df):
     # determine the sequence of events
+
     prev_st = df.event[0]
     prev_t = df.time[0]
     prev_amp = df.d[0]
+    start = 0
     sequence = []
     count = 1
     for i in range(1, len(df)):
@@ -150,15 +157,18 @@ def sequence(df):
         elif st != prev_st:
             t = (df.time[i-1] - prev_t)*1000
             amp = abs(prev_amp - df.d[i-1])
-            sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t})
+            end = i
+            sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t, 'start':start, 'end':end})
             count = 1
             prev_st = st
             prev_t = df.time[i]
             prev_amp = df.d[i]
+            start = i
         if i == len(df) - 1:
-            t = (df.time[i-1] - prev_t) * 1000
-            amp = abs(prev_amp - df.d[i-1])
-            sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t})
+            t = (df.time[i] - prev_t) * 1000
+            amp = abs(prev_amp - df.d[i])
+            end = i+1
+            sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t, 'start':start, 'end':end})
 
     print("Sequence:", sequence)
 
@@ -223,44 +233,11 @@ def main():
     # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
     plots.plot_fixations_IVT(df.copy(),threshes)
     best_thresh = 3 # in degrees per sample
-    label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
+    df = label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
 
-    #### STEP 2C: Filter Fixations ####
 
-    # # run with optimal window size and threshold
-    # window_size = 20
-    # thresh = 40.4 # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
-    # # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
-    # samples = [Sample(ind=i, time=df.time[i], x=df.pix_x[i], y=df.pix_y[i]) for i in range(len(df))]
-    # stream = ListSampleStream(samples)
-    # fixes = Dispersion(sampleStream = stream, windowSize = window_size, threshold = thresh)
-    # centers = []
-    # num_samples = []
-    # starts = []
-    # ends = []
-    # for f in fixes:
-    #     centers.append(f.get_center())
-    #     num_samples.append(f.get_num_samples())
-    #     starts.append(f.get_start())
-    #     ends.append(f.get_end())
-    #     #print(f)
-    # print("Number of fix events:", len(centers))
-    # print("Number of fix samples:", np.sum(num_samples))
-    #
-    # # label the fixations in the dataframe
-    # df['event'] = 'other'
-    # count = 0
-    # print('len(centers):', len(centers))
-    # for i in range(len(starts)):
-    #     df.loc[starts[i]:ends[i], ("event")] = 'fix'
-    #     # if the end of the data is all fixations
-    #     if i == len(starts)-1:
-    #         df.loc[starts[i]:len(starts), ("event")] = 'fix'
-    #     # if there are only 1 or 2 samples between fixations, combine them
-    #     elif starts[i+1]-ends[i] <= 2:
-    #         count += 1
-    #         df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
-    # #print(count)
+    #### Step 3: Filter Saccades Using Velocity (I-VT) Algorithm ####
+    # Houpt says 22 deg/s threshold for saccade
 
 
     # #### Step 3: Filter Saccades Using Velocity (I-VT) Algorithm ####
@@ -317,36 +294,57 @@ def main():
     #
     # # plot classification
     # plots.plot_events(df, eye=eye)
-    #
-    #
-    # #### STEP 4: Filter Saccades Using Carpenter's Theorem ####
-    #
-    # # create sequence of events
-    # seq = pd.DataFrame(sequence(df))
-    #
-    # # plot amplitude and velocity of "Sac's" along with ideal (Carpenter's: D = 21 + 2.2A, D~ms, A~deg)
-    # non_fix = seq[seq.State == 'Sac']
-    # plt.scatter(non_fix.Amplitude, non_fix.Duration_ms, label = "'non-fixation' samples")
-    # x = linspace(min(non_fix.Amplitude),max(non_fix.Amplitude))
-    # y = 21 + 2.2*x     # Carpenter's Theorem
-    # plt.plot(x, y, color = 'green', label = 'D = 21 + 2.2A')
-    # head = '[' + eye + ' eye] Saccades: Amplitude vs Duration'
-    # plt.title(head)
-    # plt.xlabel('amplitude (deg)')
-    # plt.ylabel('duration (ms)')
-    # plt.legend()
-    # plt.show()
-    #
-    # print("========= FULL SEQUENCE =========")
-    # print(seq)
-    # print("========= SAC SEQUENCE =========")
-    # print(non_fix)
-    #
-    # # calculate error rate
-    # df['error'] = (abs(non_fix.Duration_ms - (21+2.2*non_fix.Amplitude))/(21+2.2*non_fix.Amplitude))*100
-    # print("Average Error:", np.mean(df.error), "%")
-    #
-    # # classify "Sac" into "Sac" or "Other" depending on error rate with Carpenter's Theorem
+
+
+    #### STEP 4A: Filter Saccades Using Velocity Threshold ####
+    # saccade if intersample velocity > 22 deg/s (Houpt)
+    df_copy = df.copy()
+    df['event'] = np.where(v > 22, 'sac', df.event)
+    df['event'] = np.where(df.event == 'other', 'smp', df.event)
+    plots.plot_events(df,eye,'IVT')
+
+
+    #### STEP 4B: Filter Saccades Using Carpenter's Theorem ####
+
+    # create sequence of events
+    df = df_copy
+    seq = pd.DataFrame(sequence(df))
+
+    # plot amplitude and velocity of others along with ideal (Carpenter's: D = 21 + 2.2A, D~ms, A~deg)
+    other = seq[seq.State == 'other']
+    plt.scatter(other.Amplitude, other.Duration_ms, label = "other")
+    x = linspace(min(other.Amplitude),max(other.Amplitude))
+    y = 21 + 2.2*x     # Carpenter's Theorem
+    plt.plot(x, y, color = 'green', label = 'D = 21 + 2.2A')
+    head = '[' + eye + ' eye] Other: Amplitude vs Duration'
+    plt.title(head)
+    plt.xlabel('amplitude (deg)')
+    plt.ylabel('duration (ms)')
+    plt.legend()
+    plt.show()
+
+    # classify other into saccade or smooth pursuit depending on error rate with Carpenter's Theorem
+    seq['State'] = np.where(seq.Duration_ms < 101, 'sac', seq.State)
+    seq['State'] = np.where(seq.State == 'other', 'smp', seq.State)
+
+    print("========= FULL SEQUENCE =========")
+    print(seq)
+    print("========= OTHER SEQUENCE =========")
+    print(seq[seq.State == 'other'])
+    print("========= SAC SEQUENCE =========")
+    print(seq[seq.State == 'sac'])
+
+    # calculate error rate
+    sac = seq[seq.State == 'sac']
+    error = (sac.Duration_ms - (21+2.2*sac.Amplitude))/(21+2.2*sac.Amplitude)
+    print("Average Error:", np.mean(error)*100, "%")
+
+    # check results
+    for i in range(len(seq)):
+        df['event'][seq.start[i]:seq.end[i]] = seq.State[i]
+
+    plots.plot_events(df, eye, 'Carpenter')
+
 
 """
 

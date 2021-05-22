@@ -21,7 +21,7 @@
 ###############################################################################
 
 from detect.eventstream import EventStream
-from detect.eventstream import EFixation
+from detect.eventstream import EFixation, EOther
 
 
 class Dispersion(EventStream):

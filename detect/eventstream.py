@@ -66,7 +66,7 @@ class DetectorEvent(object):
 
 class EFixation(DetectorEvent):
     def __init__(self, center, length, start, end):
-        self.type = "fixation"
+        self.type = "fix"
         self.center = center
         self.length = length
         self.start = start
@@ -84,6 +84,9 @@ class EFixation(DetectorEvent):
     def get_end(self):
         return self.end.index
 
+    def get_type(self):
+        return self.type
+
     def __str__(self):
         return "Fixation at (%d,%d) of %d samples, starting at sample %d" % (
         self.center.x, self.center.y, self.length, self.start.index)
@@ -91,7 +94,7 @@ class EFixation(DetectorEvent):
 
 class ESaccade(DetectorEvent):
     def __init__(self, length, start, end):
-        self.type = "saccade"
+        self.type = "sac"
         self.length = length
         self.start = start
         self.end = end
@@ -103,11 +106,23 @@ class ESaccade(DetectorEvent):
 
 class ESmoothPursuit(DetectorEvent):
     def __init__(self, length, start, end):
-        self.type = "smooth_pursuit"
+        self.type = "smp"
         self.length = length
         self.start = start
         self.end = end
 
     def __str__(self):
         return "Smooth pursuit of %d samples, (%d,%d) -> (%d,%d)" % (
+        self.length, self.start.x, self.start.y, self.end.x, self.end.y)
+
+
+class EOther(DetectorEvent):
+    def __init__(self, length, start, end):
+        self.type = "other"
+        self.length = length
+        self.start = start
+        self.end = end
+
+    def __str__(self):
+        return "Other of %d samples, (%d,%d) -> (%d,%d)" % (
         self.length, self.start.x, self.start.y, self.end.x, self.end.y)

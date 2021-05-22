@@ -114,21 +114,23 @@ def plot_events(df, eye = 'Left', method = ''):
 
     # https://matplotlib.org/3.1.1/gallery/lines_bars_and_markers/fill_between_demo.html
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
-    min_val = min(x)
-    max_val = max(x)
+    min_val = min(d)
+    max_val = max(d)
     ax.fill_between(df['time'], min_val, max_val, where=df.event == 'fix',
                     facecolor='green', alpha=0.5, transform=trans, label='fixation')
+    # ax.fill_between(df['time'], min_val, max_val, where=df.event == 'other',
+    #                 facecolor='turquoise', alpha=0.5, transform=trans, label='other')
     try:
         ax.fill_between(df['time'], min_val, max_val, where=df.event == 'smp',
-                        facecolor='red', alpha=0.5, transform=trans, label='smooth pursuit')
+                        facecolor='orange', alpha=0.5, transform=trans, label='smooth pursuit')
+    except: pass
+    try:
         ax.fill_between(df['time'], min_val, max_val, where=df.event == 'sac',
                         facecolor='blue', alpha=0.5, transform=trans, label='saccade')
-    except:
-        ax.fill_between(df['time'], min_val, max_val, where=df.event == 'other',
-                        facecolor='blue', alpha=0.5, transform=trans, label='other')
-    ax.legend()
+    except: pass
 
-    ax.set_title('['+method+']'+eye+' eye: '+'Classification of Angular Displacement Over Time')
+    ax.legend()
+    ax.set_title('['+method+'] '+eye+' eye: '+'Classification of Angular Displacement Over Time')
     ax.set_xlabel('time (ms)')
     ax.set_ylabel('deg')
 
@@ -184,13 +186,13 @@ def plot_fixations_IDT(df,window_sizes, threshes):
                 starts.append(f.get_start())
                 ends.append(f.get_end())
                 #print(f)
-            print("Number of fix events:", len(centers))
-            print("Number of fix samples:", np.sum(num_samples))
+            #print("Number of fix events:", len(centers))
+            #print("Number of fix samples:", np.sum(num_samples))
 
             # label the fixations in the dataframe
             df['event'] = 'other'
             count = 0
-            print('len(centers):', len(centers))
+            #print('len(centers):', len(centers))
             for i in range(len(starts)):
                 df.loc[starts[i]:ends[i], ("event")] = 'fix'
                 # if the end of the data is all fixations
@@ -202,9 +204,13 @@ def plot_fixations_IDT(df,window_sizes, threshes):
                     df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
             #print(count)
 
+            # # label the saccades using velocity threshold (22 deg/s according to Houpt)
+            # df['event'] = np.where(df.v >= 22, 'sac', df.event)
+
             centers = np.array(centers)
             ax[nrow][ncol].scatter(df.x[df.event !='fix'], df.y[df.event!='fix'], s=0.5,label='other')
             ax[nrow][ncol].scatter(df.x[df.event =='fix'], df.y[df.event =='fix'], color='r', s=0.5, label='fix')
+            # ax[nrow][ncol].scatter(df.x[df.event =='sac'], df.y[df.event =='sac'], color='orange', s=0.5, label='sac')
             # for i in range(len(centers)):
             #     plots.circle(centers[i], radius=num_samples[i]*0.5+10)
             #plt.scatter(centers[:,0], centers[:,1], c='None', edgecolors='r')
@@ -225,7 +231,7 @@ def plot_fixations_IDT(df,window_sizes, threshes):
 def plot_fixations_IVT(df,threshes):
 
 
-    fig, ax = plt.subplots(1,len(threshes), figsize=(16,8))
+    fig, ax = plt.subplots(1,len(threshes), figsize=(16,6))
 
     ncol = 0
     for thresh in threshes:
@@ -242,13 +248,13 @@ def plot_fixations_IVT(df,threshes):
             starts.append(f.get_start())
             ends.append(f.get_end())
             #print(f)
-        print("Number of fix events:", len(centers))
-        print("Number of fix samples:", np.sum(num_samples))
+        #print("Number of fix events:", len(centers))
+        #print("Number of fix samples:", np.sum(num_samples))
 
         # label the fixations in the dataframe
         df['event'] = 'other'
         count = 0
-        print('len(centers):', len(centers))
+        #print('len(centers):', len(centers))
         for i in range(len(starts)):
             df.loc[starts[i]:ends[i], ("event")] = 'fix'
             # if the end of the data is all fixations
@@ -260,9 +266,13 @@ def plot_fixations_IVT(df,threshes):
                 df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
         #print(count)
 
+        # # label the saccades using velocity threshold (22 deg/s according to Houpt)
+        # df['event'] = np.where(df.v >= 22, 'sac', df.event)
+
         centers = np.array(centers)
         ax[ncol].scatter(df.x[df.event !='fix'], df.y[df.event!='fix'], s=0.5,label='other')
         ax[ncol].scatter(df.x[df.event =='fix'], df.y[df.event =='fix'], color='r', s=0.5, label='fix')
+        # ax[ncol].scatter(df.x[df.event == 'sac'], df.y[df.event == 'sac'], color='orange', s=0.5, label='sac')
         # for i in range(len(centers)):
         #     plots.circle(centers[i], radius=num_samples[i]*0.5+10)
         #plt.scatter(centers[:,0], centers[:,1], c='None', edgecolors='r')
