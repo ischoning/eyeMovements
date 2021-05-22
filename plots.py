@@ -9,6 +9,11 @@ from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import IsolationForest
 from preprocessing import get_feats
 from matplotlib.patches import Circle  # $matplotlib/patches.py
+from detect.dispersion import Dispersion
+from detect.velocity import Velocity
+from detect.intersamplevelocity import IntersampleVelocity
+from detect.sample import Sample
+from detect.sample import ListSampleStream
 
 
 global pltsize
@@ -99,31 +104,31 @@ def plot_vs_time(df, feat, label = '', eye = 'left'):
     plt.show()
 
 
-def plot_events(df, eye = 'Left'):
+def plot_events(df, eye = 'Left', method = ''):
 
     _, _, x, y, d, v, a, del_d = get_feats(df, eye)
 
     fig, ax = plt.subplots(figsize=pltsize)
 
-    ax.plot(df['time'], x, color='red')
+    ax.plot(df['time'], d, color='red')
 
     # https://matplotlib.org/3.1.1/gallery/lines_bars_and_markers/fill_between_demo.html
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
     min_val = min(x)
     max_val = max(x)
-    ax.fill_between(df['time'], min_val, max_val, where=df.event == 'Fix',
+    ax.fill_between(df['time'], min_val, max_val, where=df.event == 'fix',
                     facecolor='green', alpha=0.5, transform=trans, label='fixation')
     try:
-        ax.fill_between(df['time'], min_val, max_val, where=df.event == 'SmP',
+        ax.fill_between(df['time'], min_val, max_val, where=df.event == 'smp',
                         facecolor='red', alpha=0.5, transform=trans, label='smooth pursuit')
-        ax.fill_between(df['time'], min_val, max_val, where=df.event == 'Sac',
+        ax.fill_between(df['time'], min_val, max_val, where=df.event == 'sac',
                         facecolor='blue', alpha=0.5, transform=trans, label='saccade')
     except:
-        ax.fill_between(df['time'], min_val, max_val, where=df.event == 'Sac',
+        ax.fill_between(df['time'], min_val, max_val, where=df.event == 'other',
                         facecolor='blue', alpha=0.5, transform=trans, label='other')
     ax.legend()
 
-    ax.set_title(eye+' eye: '+'Classification of Angular Displacement Over Time')
+    ax.set_title('['+method+']'+eye+' eye: '+'Classification of Angular Displacement Over Time')
     ax.set_xlabel('time (ms)')
     ax.set_ylabel('deg')
 
@@ -155,3 +160,117 @@ def plot_hist(df, method, eye, title, x_axis, density=False):
 
 def plot_pmf(data, title='Velocity', x_axis='deg/s'):
     return plot_hist(data, title=title, x_axis=x_axis, density=True)
+
+
+
+def plot_fixations_IDT(df,window_sizes, threshes):
+
+    fig, ax = plt.subplots(len(threshes),len(window_sizes), figsize=(16,10))
+
+    nrow = 0
+    ncol = 0
+    for window_size in window_sizes:
+        for thresh in threshes:
+            samples = [Sample(ind=i, time=df.time[i], x=df.x[i], y=df.y[i]) for i in range(len(df))]
+            stream = ListSampleStream(samples)
+            fixes = Dispersion(sampleStream = stream, windowSize = window_size, threshold = thresh)
+            centers = []
+            num_samples = []
+            starts = []
+            ends = []
+            for f in fixes:
+                centers.append(f.get_center())
+                num_samples.append(f.get_num_samples())
+                starts.append(f.get_start())
+                ends.append(f.get_end())
+                #print(f)
+            print("Number of fix events:", len(centers))
+            print("Number of fix samples:", np.sum(num_samples))
+
+            # label the fixations in the dataframe
+            df['event'] = 'other'
+            count = 0
+            print('len(centers):', len(centers))
+            for i in range(len(starts)):
+                df.loc[starts[i]:ends[i], ("event")] = 'fix'
+                # if the end of the data is all fixations
+                if i == len(starts)-1:
+                    df.loc[starts[i]:len(starts), ("event")] = 'fix'
+                # if there are only 1 or 2 samples between fixations, combine them
+                elif starts[i+1]-ends[i] <= 2:
+                    count += 1
+                    df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
+            #print(count)
+
+            centers = np.array(centers)
+            ax[nrow][ncol].scatter(df.x[df.event !='fix'], df.y[df.event!='fix'], s=0.5,label='other')
+            ax[nrow][ncol].scatter(df.x[df.event =='fix'], df.y[df.event =='fix'], color='r', s=0.5, label='fix')
+            # for i in range(len(centers)):
+            #     plots.circle(centers[i], radius=num_samples[i]*0.5+10)
+            #plt.scatter(centers[:,0], centers[:,1], c='None', edgecolors='r')
+            ax[nrow][ncol].set_title('[I-DT] Window: '+str(window_size)+' Thresh: '+str(thresh))
+            ax[nrow][ncol].set_xlabel('x pixel')
+            ax[nrow][ncol].set_ylabel('y pixel')
+            ax[nrow][ncol].legend()
+
+            nrow += 1
+        nrow = 0
+        ncol += 1
+    plt.legend()
+    plt.show()
+
+
+
+
+def plot_fixations_IVT(df,threshes):
+
+
+    fig, ax = plt.subplots(1,len(threshes), figsize=(16,8))
+
+    ncol = 0
+    for thresh in threshes:
+        samples = [Sample(ind=i, time=df.time[i], x=df.x[i], y=df.y[i]) for i in range(len(df))]
+        stream = ListSampleStream(samples)
+        fixes = Velocity(sampleStream = IntersampleVelocity(stream), threshold = thresh)
+        centers = []
+        num_samples = []
+        starts = []
+        ends = []
+        for f in fixes:
+            centers.append(f.get_center())
+            num_samples.append(f.get_num_samples())
+            starts.append(f.get_start())
+            ends.append(f.get_end())
+            #print(f)
+        print("Number of fix events:", len(centers))
+        print("Number of fix samples:", np.sum(num_samples))
+
+        # label the fixations in the dataframe
+        df['event'] = 'other'
+        count = 0
+        print('len(centers):', len(centers))
+        for i in range(len(starts)):
+            df.loc[starts[i]:ends[i], ("event")] = 'fix'
+            # if the end of the data is all fixations
+            if i == len(starts)-1:
+                df.loc[starts[i]:len(starts), ("event")] = 'fix'
+            # if there are only 1 or 2 samples between fixations, combine them
+            elif starts[i+1]-ends[i] <= 2:
+                count += 1
+                df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
+        #print(count)
+
+        centers = np.array(centers)
+        ax[ncol].scatter(df.x[df.event !='fix'], df.y[df.event!='fix'], s=0.5,label='other')
+        ax[ncol].scatter(df.x[df.event =='fix'], df.y[df.event =='fix'], color='r', s=0.5, label='fix')
+        # for i in range(len(centers)):
+        #     plots.circle(centers[i], radius=num_samples[i]*0.5+10)
+        #plt.scatter(centers[:,0], centers[:,1], c='None', edgecolors='r')
+        ax[ncol].set_title('[I-VT] Thresh: '+str(thresh))
+        ax[ncol].set_xlabel('x pixel')
+        ax[ncol].set_ylabel('y pixel')
+        ax[ncol].legend()
+
+        ncol += 1
+    plt.legend()
+    plt.show()

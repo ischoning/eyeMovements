@@ -14,6 +14,8 @@ import plots
 from detect.dispersion import Dispersion
 from detect.sample import Sample
 from detect.sample import ListSampleStream
+from detect.velocity import Velocity
+from detect.intersamplevelocity import IntersampleVelocity
 
 
 def clean_sequence(df):
@@ -50,6 +52,49 @@ def clean_sequence(df):
     print("Sequence after removing events less than 4 samples long:", sequence)
 
     return df
+
+def label_fixes(df, eye, ws = 0, thresh = 0, method='IDT'):
+
+    samples = [Sample(ind=i, time=df.time[i], x=df.x[i], y=df.y[i]) for i in range(len(df))]
+    stream = ListSampleStream(samples)
+
+    if method == 'IDT':
+        fixes = Dispersion(sampleStream = stream, windowSize = ws, threshold = thresh)
+    elif method == 'IVT':
+        fixes = Velocity(sampleStream=IntersampleVelocity(stream), threshold=thresh)
+    else:
+        raise Exception('method should be either "IDT" or "IVT"')
+
+    centers = []
+    num_samples = []
+    starts = []
+    ends = []
+    for f in fixes:
+        centers.append(f.get_center())
+        num_samples.append(f.get_num_samples())
+        starts.append(f.get_start())
+        ends.append(f.get_end())
+        # print(f)
+    print("Number of fix events:", len(centers))
+    print("Number of fix samples:", np.sum(num_samples))
+
+    # label the fixations in the dataframe
+    df['event'] = 'other'
+    count = 0
+    print('len(centers):', len(centers))
+    for i in range(len(starts)):
+        df.loc[starts[i]:ends[i], ("event")] = 'fix'
+        # if the end of the data is all fixations
+        if i == len(starts) - 1:
+            df.loc[starts[i]:len(starts), ("event")] = 'fix'
+        # if there are only 1 or 2 samples between fixations, combine them
+        elif starts[i + 1] - ends[i] <= 2:
+            count += 1
+            df.loc[ends[i]:starts[i + 1], ("event")] = 'fix'
+    # print(count)
+
+    # plot classification
+    plots.plot_events(df, eye=eye, method = method)
 
 
 def print_events(df):
@@ -124,7 +169,7 @@ def main():
 
     #### STEP 0: Load Data ####
     # files
-    file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_5_0_0.txt'
+    file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_17_0_0.txt'
 
     # create dataframe
     df = pd.read_csv(file, sep="\t", float_precision=None)
@@ -140,12 +185,14 @@ def main():
 
     # instantiate data according to eye, selected above
     pix_x, pix_y, x, y, d, v, a, del_d = get_feats(df, eye)
+    df['pix_x'] = pix_x
+    df['pix_y'] = pix_y
+    df['x'] = x
+    df['y'] = y
     df['d'] = d
     df['v'] = v
     df['a'] = a
     df['del_d'] = del_d
-    df['pix_x'] = pix_x
-    df['pix_y'] = pix_y
 
     #df['v'] = np.convolve(df.vel_r, df.vel_l, mode='same')/(2*len(df))
     #df['a'] = np.convolve(df.accel_r, df.accel_l, mode='same')
@@ -157,126 +204,65 @@ def main():
     #plots.plot_vs_time(df, feat = df.a, label = 'Acceleration', eye=eye)
 
 
-    #### STEP 2: Filter Fixations Using Dispersion (I-DT) Algorithm ####
+    #### STEP 2A: Filter Fixations Using Dispersion (I-DT) Algorithm ####
 
-    # select threshold method (Velocity or Dispersion)
-    method = 'Dispersion'
-    window_sizes = (5, 10,15,20)
-    threshes = (40.4,60.6) # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
+    # determine ideal window size and threshold
+    window_sizes = (15,20,25,30)
+    threshes = (0.75,1) # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
     # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
+    plots.plot_fixations_IDT(df.copy(),window_sizes,threshes)
+    best_window_size = 20
+    best_thresh = 0.5 # in degrees
+    label_fixes(df.copy(), eye=eye, ws=best_window_size, thresh=best_thresh, method = 'IDT')
 
-    fig, ax = plt.subplots(len(threshes),len(window_sizes), figsize=(16,10))
 
-    nrow = 0
-    ncol = 0
-    for window_size in window_sizes:
-        for thresh in threshes:
-            samples = [Sample(ind=i, time=df.time[i], x=df.pix_x[i], y=df.pix_y[i]) for i in range(len(df))]
-            stream = ListSampleStream(samples)
-            fixes = Dispersion(sampleStream = stream, windowSize = window_size, threshold = thresh)
-            centers = []
-            num_samples = []
-            starts = []
-            ends = []
-            for f in fixes:
-                centers.append(f.get_center())
-                num_samples.append(f.get_num_samples())
-                starts.append(f.get_start())
-                ends.append(f.get_end())
-                print(f)
-            print("Number of fix events:", len(centers))
-            print("Number of fix samples:", np.sum(num_samples))
+    #### STEP 2B: Filter Fixations Using Velocity (I-VT) Algorithm ####
 
-            # label the fixations in the dataframe
-            df['event'] = 'other'
-            count = 0
-            print('len(centers):', len(centers))
-            for i in range(len(starts)):
-                df.loc[starts[i]:ends[i], ("event")] = 'fix'
-                # if the end of the data is all fixations
-                if i == len(starts)-1:
-                    df.loc[starts[i]:len(starts), ("event")] = 'fix'
-                # if there are only 1 or 2 samples between fixations, combine them
-                elif starts[i+1]-ends[i] <= 2:
-                    count += 1
-                    df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
-            print(count)
+    # run with optimal window size and threshold
+    threshes = [1, 2, 3] # pixels per sample below which fixation
+    # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
+    plots.plot_fixations_IVT(df.copy(),threshes)
+    best_thresh = 3 # in degrees per sample
+    label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
 
-            centers = np.array(centers)
-            ax[nrow][ncol].scatter(df.right_angle_x[df.event !='fix'], df.right_angle_y[df.event!='fix'], s=0.5,label='other')
-            ax[nrow][ncol].scatter(df.right_angle_x[df.event =='fix'], df.right_angle_y[df.event =='fix'], color='r', s=0.5, label='fix')
-            # for i in range(len(centers)):
-            #     plots.circle(centers[i], radius=num_samples[i]*0.5+10)
-            #plt.scatter(centers[:,0], centers[:,1], c='None', edgecolors='r')
-            ax[nrow][ncol].set_title('Window: '+str(window_size)+' Thresh: '+str(thresh))
-            ax[nrow][ncol].set_xlabel('x pixel')
-            ax[nrow][ncol].set_ylabel('y pixel')
-            ax[nrow][ncol].legend()
+    #### STEP 2C: Filter Fixations ####
 
-            nrow += 1
-        nrow = 0
-        ncol += 1
-    plt.legend()
-    plt.show()
+    # # run with optimal window size and threshold
+    # window_size = 20
+    # thresh = 40.4 # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
+    # # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
+    # samples = [Sample(ind=i, time=df.time[i], x=df.pix_x[i], y=df.pix_y[i]) for i in range(len(df))]
+    # stream = ListSampleStream(samples)
+    # fixes = Dispersion(sampleStream = stream, windowSize = window_size, threshold = thresh)
+    # centers = []
+    # num_samples = []
+    # starts = []
+    # ends = []
+    # for f in fixes:
+    #     centers.append(f.get_center())
+    #     num_samples.append(f.get_num_samples())
+    #     starts.append(f.get_start())
+    #     ends.append(f.get_end())
+    #     #print(f)
+    # print("Number of fix events:", len(centers))
+    # print("Number of fix samples:", np.sum(num_samples))
     #
-    # centers = np.array(centers)
-    # plt.scatter(pix_x[df.event !='fix'], pix_y[df.event!='fix'], s=0.5)
-    # plt.scatter(pix_x[df.event =='fix'], pix_y[df.event =='fix'], color='r', s=0.5)
-    # plt.title('Fixations using WindowSize '+str(window_size)+' and Thresh '+str(thresh))
-    # plt.xlabel('x pixel')
-    # plt.ylabel('y pixel')
-    # plt.show()
+    # # label the fixations in the dataframe
+    # df['event'] = 'other'
+    # count = 0
+    # print('len(centers):', len(centers))
+    # for i in range(len(starts)):
+    #     df.loc[starts[i]:ends[i], ("event")] = 'fix'
+    #     # if the end of the data is all fixations
+    #     if i == len(starts)-1:
+    #         df.loc[starts[i]:len(starts), ("event")] = 'fix'
+    #     # if there are only 1 or 2 samples between fixations, combine them
+    #     elif starts[i+1]-ends[i] <= 2:
+    #         count += 1
+    #         df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
+    # #print(count)
 
-    # # set variables
-    # if method == 'Dispersion':
-    #     var = np.abs(del_d)
-    #     x_axis = 'deg'
-    # elif method == 'Velocity':
-    #     var = v
-    #     x_axis = 'deg/s'
-    #
-    # # plot histogram
-    # head = eye + ' eye: ' + method
-    # hist, bin_edges = plots.plot_hist(df, method = method, eye = eye, title=head, x_axis=x_axis)
-    #
-    # # sanity check:
-    # prob = hist/len(hist)
-    # print('sum of hist:', np.sum(prob))
-    #
-    # # calculate distribution characteristics
-    # mu = np.mean(var)
-    # sigma = np.std(var)
-    # med = np.median(var)
-    # print("mean:", mu, "std:", sigma)
-    # print("median:", med)
-    #
-    # # set initial threshold values
-    # if method == 'Dispersion':
-    #     thresh_init = 1  # degree
-    # elif method == 'Velocity':
-    #     thresh_init = mu
-    #
-    # # create fixation gaussian
-    # fix = var[var <= thresh_init]
-    # mu_fix = np.mean(fix)
-    # sigma_fix = np.std(fix)
-    # med_fix = np.median(fix)
-    # print("fix mean:", mu_fix, "fix std:", sigma_fix)
-    # print("fix median:", med_fix)
-    #
-    # # update threshold values
-    # if method == 'Dispersion':
-    #     thresh = 1  # degree
-    # elif method == 'Velocity':
-    #     thresh = mu_fix + 3 * sigma_fix
-    #
-    # # basic threshold classification
-    # df['event'] = np.where(var <= thresh, 'Fix', 'Sac')
-    #
-    # # plot classification
-    # plots.plot_events(df, eye =eye)
-    #
-    #
+
     # #### Step 3: Filter Saccades Using Velocity (I-VT) Algorithm ####
     #
     # # select threshold method (Velocity or Dispersion)
