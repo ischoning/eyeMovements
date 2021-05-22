@@ -179,7 +179,7 @@ def main():
 
     #### STEP 0: Load Data ####
     # files
-    file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_17_0_0.txt'
+    file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_12_0_0.txt'
 
     # create dataframe
     df = pd.read_csv(file, sep="\t", float_precision=None)
@@ -236,67 +236,7 @@ def main():
     df = label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
 
 
-    #### Step 3: Filter Saccades Using Velocity (I-VT) Algorithm ####
-    # Houpt says 22 deg/s threshold for saccade
-
-
-    # #### Step 3: Filter Saccades Using Velocity (I-VT) Algorithm ####
-    #
-    # # select threshold method (Velocity or Dispersion)
-    # method = 'Velocity'
-    #
-    # # set variables
-    # if method == 'Dispersion':
-    #     var = np.abs(del_d)
-    #     x_axis = 'deg'
-    # elif method == 'Velocity':
-    #     var = v
-    #     x_axis = 'deg/s'
-    #
-    # # plot histogram
-    # head = eye + ' eye: ' + method
-    # hist, bin_edges = plots.plot_hist(df, method=method, eye=eye, title=head, x_axis=x_axis)
-    #
-    # # sanity check:
-    # prob = hist / len(hist)
-    # print('sum of hist:', np.sum(prob))
-    #
-    # # calculate distribution characteristics
-    # mu = np.mean(var)
-    # sigma = np.std(var)
-    # med = np.median(var)
-    # print("mean:", mu, "std:", sigma)
-    # print("median:", med)
-    #
-    # # set initial threshold values
-    # if method == 'Dispersion':
-    #     thresh_init = 1  # degree
-    # elif method == 'Velocity':
-    #     thresh_init = mu
-    #
-    # # create non-fixation gaussian
-    # sac = var[var > thresh_init]
-    # mu_sac = np.mean(sac)
-    # sigma_sac = np.std(sac)
-    # med_sac = np.median(sac)
-    # print("non-fix mean:", mu_sac, "non-fix std:", sigma_sac)
-    # print("non-fix median:", med_sac)
-    #
-    # # update threshold values
-    # if method == 'Dispersion':
-    #     thresh = 1  # degree
-    # elif method == 'Velocity':
-    #     thresh = mu
-    #
-    # # basic threshold classification
-    # df['event2'] = np.where(var > thresh, 'Sac', 'SmP')
-    # df.event = np.where(df.event != 'Fix', df.event2, 'Fix')
-    #
-    # # plot classification
-    # plots.plot_events(df, eye=eye)
-
-
-    #### STEP 4A: Filter Saccades Using Velocity Threshold ####
+    #### STEP 3A: Filter Saccades Using Velocity Threshold ####
     # saccade if intersample velocity > 22 deg/s (Houpt)
     df_copy = df.copy()
     df['event'] = np.where(v > 22, 'sac', df.event)
@@ -304,7 +244,7 @@ def main():
     plots.plot_events(df,eye,'IVT')
 
 
-    #### STEP 4B: Filter Saccades Using Carpenter's Theorem ####
+    #### STEP 3B: Filter Saccades Using Carpenter's Theorem ####
 
     # create sequence of events
     df = df_copy
@@ -323,8 +263,11 @@ def main():
     plt.legend()
     plt.show()
 
+    # calculate error rate
+    seq['error'] = (seq.Duration_ms - (21 + 2.2 * seq.Amplitude)) / (21 + 2.2 * seq.Amplitude)
+
     # classify other into saccade or smooth pursuit depending on error rate with Carpenter's Theorem
-    seq['State'] = np.where(seq.Duration_ms < 101, 'sac', seq.State)
+    seq['State'] = np.where(seq.State == 'other', np.where(seq.error < 0.1, 'sac', seq.State),seq.State)
     seq['State'] = np.where(seq.State == 'other', 'smp', seq.State)
 
     print("========= FULL SEQUENCE =========")
@@ -334,10 +277,8 @@ def main():
     print("========= SAC SEQUENCE =========")
     print(seq[seq.State == 'sac'])
 
-    # calculate error rate
     sac = seq[seq.State == 'sac']
-    error = (sac.Duration_ms - (21+2.2*sac.Amplitude))/(21+2.2*sac.Amplitude)
-    print("Average Error:", np.mean(error)*100, "%")
+    print("Average Error:", np.mean(sac.error)*100, "%")
 
     # check results
     for i in range(len(seq)):
