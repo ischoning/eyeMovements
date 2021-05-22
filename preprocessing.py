@@ -1,32 +1,33 @@
 # import sys
 # sys.path.insert(1, "/Users/ischoning/PycharmProjects/eyeMovements/eventdetect-master")
-import pandas as pd
 from pylab import *
-import matplotlib.pyplot as plt
 import numpy as np
-from Sample import Sample
-import common
-import kmeans
+from Sample_window import Sample
+from Archive import common, kmeans
 from scipy import signal
 
-def run_kmeans(df, eye = 'right'):
-    # if eye == 'right' or eye == 'Right':
-    #     X = np.array([df.d_r, df.vel_r]).T
-    # else:
-    #     X = np.array([df.d_l, df.vel_l]).T
-    X = np.array([df.right_angle_x, df.right_angle_y]).T
-    K = np.array([5, 6])
-    costs = []
-    for k in K:
-        cost = []
-        for i in range(0, 5):
-            seed = np.random.seed(i)
-            mixture, post = common.init(X, k, seed)
-            kmixture, kpost, kcost = kmeans.run(X, mixture, post)
-            common.plot(X, kmixture, kpost, "K = " + str(k) + ", seed = " + str(i) + ", Cost = " + str(kcost))
-            cost.append(kcost)
-        costs.append(min(cost))
-    print("costs:",costs)
+
+def get_feats(df, eye):
+    if eye == 'right' or eye == 'Right':
+        pix_x = df['right_gaze_x']
+        pix_y = df['right_gaze_y']
+        x = df['right_angle_x']
+        y = df['right_angle_y']
+        d = df['d_r']
+        v = df['vel_r']
+        a = df['accel_r']
+        del_d = df['del_d_r']
+    else:
+        pix_x = df['left_gaze_x']
+        pix_y = df['left_gaze_y']
+        x = df['left_angle_x']
+        y = df['left_angle_y']
+        d = df['d_l']
+        v = df['vel_l']
+        a = df['accel_l']
+        del_d = df['del_d_l']
+
+    return pix_x, pix_y, x, y, d, v, a, del_d
 
 
 def remove_outliers(df):
@@ -36,9 +37,10 @@ def remove_outliers(df):
     """
 
     len_init = len(df)
+    print(df)
 
     # sample rate: 100 samples per sec
-    df = df[:1000]
+    df = df[1000:7000]
 
     # Remove NA's
     df.replace([np.inf, -np.inf], np.nan)
@@ -67,16 +69,16 @@ def remove_outliers(df):
     df['isi'] = np.diff(df.time, prepend=0)
 
     # Calculate target
-    df['target_d'] = df.target_angle_x + df.target_angle_y
-    del_target_d = np.diff(df.target_d, prepend=0)
-    df['target_vel'] = abs(del_target_d) / df.isi
+    df['target_d'] = df['target_angle_x'] + df['target_angle_y']
+    del_target_d = np.diff(df['target_d'], prepend=0)
+    df['target_vel'] = abs(del_target_d) / df['isi']
     for i in range(1,len(df)-1):
         prev = df.target_vel[i-1]
         next = df.target_vel[i+1]
         if df.target_vel[i] == 0 and prev != 0 and next != 0:
             df.target_vel[i] = abs(next+prev)/2.0
     del_target_vel = np.diff(df.target_vel, prepend=0)
-    df['target_accel'] = abs(del_target_vel) / df.isi
+    df['target_accel'] = abs(del_target_vel) / df['isi']
 
     # Calculate amplitude, velocity, acceleration, change in acceleration
 
@@ -97,60 +99,36 @@ def remove_outliers(df):
 
     #scipy filtering (butterworth, wells..?)
 
-    del_d_r = np.diff(df.d_r, prepend=0)
-    del_d_l = np.diff(df.d_l, prepend=0)
+    del_d_r = np.diff(df['d_r'], prepend=0)
+    del_d_l = np.diff(df['d_l'], prepend=0)
 
-    df['vel_r'] = abs(del_d_r) / df.isi
-    df['vel_l'] = abs(del_d_l) / df.isi
+    df['vel_r'] = abs(del_d_r) / df['isi']
+    df['vel_l'] = abs(del_d_l) / df['isi']
 
     df['vel_r'] = signal.savgol_filter(df.loc[:,'vel_r'], window_length = 101, polyorder = 3)
     df['vel_l'] = signal.savgol_filter(df.loc[:,'vel_l'], window_length = 101, polyorder = 3)
 
-    del_vel_r = np.diff(df.vel_r, prepend=0)
-    del_vel_l = np.diff(df.vel_l, prepend=0)
+    del_vel_r = np.diff(df['vel_r'], prepend=0)
+    del_vel_l = np.diff(df['vel_l'], prepend=0)
 
-    df['accel_r'] = abs(del_vel_r) / df.isi
-    df['accel_l'] = abs(del_vel_l) / df.isi
+    df['accel_r'] = abs(del_vel_r) / df['isi']
+    df['accel_l'] = abs(del_vel_l) / df['isi']
 
     df['accel_r'] = signal.savgol_filter(df.loc[:,'accel_r'], window_length=101, polyorder=3)
     df['accel_l'] = signal.savgol_filter(df.loc[:,'accel_l'], window_length=101, polyorder=3)
 
-    del_accel_r = np.diff(df.accel_r, prepend=0)
-    del_accel_l = np.diff(df.accel_l, prepend=0)
+    del_accel_r = np.diff(df['accel_r'], prepend=0)
+    del_accel_l = np.diff(df['accel_l'], prepend=0)
 
-    df['jolt_r'] = del_accel_r / df.isi
-    df['jolt_l'] = del_accel_l / df.isi
+    df['jolt_r'] = del_accel_r / df['isi']
+    df['jolt_l'] = del_accel_l / df['isi']
+
+    df['del_d_r'] = del_d_r
+    df['del_d_l'] = del_d_l
 
     # remove the first three datapoints (due to intersample calculations)
     df = df[3:]
     df.reset_index(drop=True, inplace=True)
-
-    # explore thresholding
-    # df['d_vs_vel_l'] = np.divide(df.d_l, df.vel_l)
-    # plt.scatter(df.vel_l, df.d_vs_vel_l, s = 2)
-    # plt.title('left eye: dist vs ratio dist/vel')
-    # plt.xlabel('deg/s')
-    # plt.ylabel('ratio (d/vel)')
-    # plt.show()
-    # df['d_vs_vel_r'] = np.divide(df.d_r, df.vel_r)
-    # plt.scatter(df.vel_r, df.d_vs_vel_r, s=2)
-    # plt.title('right eye: dist vs ratio dist/vel')
-    # plt.xlabel('deg/s')
-    # plt.ylabel('ratio (d/vel)')
-    # plt.show()
-    #
-    # df['vel_vs_d_l'] = np.divide(df.vel_l, df.d_l)
-    # plt.scatter(df.d_l, df.vel_vs_d_l, s = 2)
-    # plt.title('left eye: dist vs ratio vel/dist')
-    # plt.xlabel('deg')
-    # plt.ylabel('ratio (vel/d)')
-    # plt.show()
-    # df['vel_vs_d_r'] = np.divide(df.vel_r, df.d_r)
-    # plt.scatter(df.d_l, df.vel_vs_d_r, s = 2)
-    # plt.title('right eye: dist vs ratio vel/dist')
-    # plt.xlabel('deg')
-    # plt.ylabel('ratio (vel/d)')
-    # plt.show()
 
 
     # initialize class

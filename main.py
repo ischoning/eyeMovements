@@ -8,8 +8,12 @@ import scipy.stats as stats
 import math
 import viterbi
 import baum_welch
-import preprocessing
+from preprocessing import remove_outliers
+from preprocessing import get_feats
 import plots
+from detect.dispersion import Dispersion
+from detect.sample import Sample
+from detect.sample import ListSampleStream
 
 
 def clean_sequence(df):
@@ -48,32 +52,21 @@ def clean_sequence(df):
     return df
 
 
-def label_event(event, states):
-    if len(states) == 0:
-        print("No states provided.")
-        return
-    if event == 1:
-        return states[1] # 'Fixation'
-    if event == 0:
-        return states[0] # 'Saccade'
-    return 'Other'
-
-
-def print_events(t, event, states):
+def print_events(df):
     events = []
-    event_label = label_event(event.iloc[0], states)
-    start = t.iloc[0]
+    event_label = df.event.iloc[0]
+    start = df.time.iloc[0]
     n = 1
     event_change = False
-    for i in range(len(event)):
-        if i == len(event)-1 or event.iloc[i] != event.iloc[i+1]:
+    for i in range(len(df)):
+        if i == len(df)-1 or df.event.iloc[i] != df.event.iloc[i+1]:
             event_change = True
         if event_change:
-            end = t.iloc[i]
+            end = df.time.iloc[i]
             events.append([event_label, n, start, end])
-            if i != len(event)-1:
-                start = t.iloc[i+1]
-                event_label = label_event(event.iloc[i+1], states)
+            if i != len(df)-1:
+                start = df.time.iloc[i+1]
+                event_label = df.event.iloc[i+1]
                 n = 1
                 event_change = False
         else:
@@ -86,9 +79,10 @@ def print_events(t, event, states):
 
     print('=====================================================================')
 
-    print('Number of Fixation events:', sum(event==1))
-    print('Number of Saccade events:', sum(event==0))
-    print('Total number of events:', len(event))
+    print('Number of Fixation events:', sum(df.event=='fix'))
+    print('Number of Smooth Pursuit events:', sum(df.event=='smp'))
+    print('Number of Saccade events:', sum(df.event == 'sac'))
+    print('Number of Other events:', sum(df.event == 'other'))
 
     return None
 
@@ -130,127 +124,243 @@ def main():
 
     #### STEP 0: Load Data ####
     # files
-    file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_4_0_0.txt'
+    file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_5_0_0.txt'
 
     # create dataframe
     df = pd.read_csv(file, sep="\t", float_precision=None)
     df = df[['time', 'dt', 'device_time', 'left_pupil_measure1', 'right_pupil_measure1', 'target_angle_x', 'target_angle_y',
-         'right_gaze_x', 'right_gaze_y', 'left_angle_x', 'left_angle_y', 'right_angle_x', 'right_angle_y']]
+         'right_gaze_x', 'right_gaze_y', 'left_gaze_x', 'left_gaze_y', 'left_angle_x', 'left_angle_y', 'right_angle_x', 'right_angle_y']]
 
     # select eye data to analyze ('left' or 'right')
     eye = 'left'
 
 
     #### STEP 1: Clean Outliers ####
-    df = preprocessing.remove_outliers(df)
+    df = remove_outliers(df)
 
     # instantiate data according to eye, selected above
-    if eye == 'right' or eye == 'Right':
-        df['d'] = df.d_r
-        df['v'] = df.vel_r
-        df['a'] = df.accel_r
-    else:
-        df['d'] = df.d_l
-        df['v'] = df.vel_l
-        df['a'] = df.accel_l
+    pix_x, pix_y, x, y, d, v, a, del_d = get_feats(df, eye)
+    df['d'] = d
+    df['v'] = v
+    df['a'] = a
+    df['del_d'] = del_d
+    df['pix_x'] = pix_x
+    df['pix_y'] = pix_y
 
     #df['v'] = np.convolve(df.vel_r, df.vel_l, mode='same')/(2*len(df))
     #df['a'] = np.convolve(df.accel_r, df.accel_l, mode='same')
 
     # plot results after removing outliers
     plots.plot_path(df)
-    plots.plot_vs_time(df, feat = df.d, label ='Amplitude', eye = eye)
-    plots.plot_vs_time(df, feat = df.v, label ='Velocity', eye = eye)
+    plots.plot_vs_time(df, feat = d, label ='Amplitude', eye = eye)
+    plots.plot_vs_time(df, feat = v, label ='Velocity', eye = eye)
     #plots.plot_vs_time(df, feat = df.a, label = 'Acceleration', eye=eye)
 
 
-    #### STEP 2: Filter Fixations ####
+    #### STEP 2: Filter Fixations Using Dispersion (I-DT) Algorithm ####
 
-    # plot velocity histogram
-    head = eye + ' eye: Velocity'
-    hist, bin_edges = plots.plot_hist(df, eye, title=head, x_axis='deg/s')
+    # select threshold method (Velocity or Dispersion)
+    method = 'Dispersion'
+    window_sizes = (5, 10,15,20)
+    threshes = (40.4,60.6) # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
+    # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
 
-    # sanity check:
-    prob = hist/len(hist)
-    print(np.sum(prob))
+    fig, ax = plt.subplots(len(threshes),len(window_sizes), figsize=(16,10))
 
-    # calculate distribution characteristics
-    mu = np.mean(df.v)
-    sigma = np.std(df.v)
-    med = np.median(df.v)
-    print("mean:", mu, "std:", sigma)
-    print("median:", med)
+    nrow = 0
+    ncol = 0
+    for window_size in window_sizes:
+        for thresh in threshes:
+            samples = [Sample(ind=i, time=df.time[i], x=df.pix_x[i], y=df.pix_y[i]) for i in range(len(df))]
+            stream = ListSampleStream(samples)
+            fixes = Dispersion(sampleStream = stream, windowSize = window_size, threshold = thresh)
+            centers = []
+            num_samples = []
+            starts = []
+            ends = []
+            for f in fixes:
+                centers.append(f.get_center())
+                num_samples.append(f.get_num_samples())
+                starts.append(f.get_start())
+                ends.append(f.get_end())
+                print(f)
+            print("Number of fix events:", len(centers))
+            print("Number of fix samples:", np.sum(num_samples))
 
-    # create fixation gaussian
-    fix = df.v[df.v<=mu]
-    mu_fix = np.mean(fix)
-    sigma_fix = np.std(fix)
-    med_fix = np.median(fix)
-    print("fix mean:", mu_fix, "fix std:", sigma_fix)
-    print("fix median:", med_fix)
-    plt.hist(fix, bins = int(len(fix)/2), normed=True)
-    y = gaussian(mu_fix, sigma_fix, fix)
-    plt.plot(fix, y, color = 'green')
-    plt.title('Fixations')
-    plt.show()
+            # label the fixations in the dataframe
+            df['event'] = 'other'
+            count = 0
+            print('len(centers):', len(centers))
+            for i in range(len(starts)):
+                df.loc[starts[i]:ends[i], ("event")] = 'fix'
+                # if the end of the data is all fixations
+                if i == len(starts)-1:
+                    df.loc[starts[i]:len(starts), ("event")] = 'fix'
+                # if there are only 1 or 2 samples between fixations, combine them
+                elif starts[i+1]-ends[i] <= 2:
+                    count += 1
+                    df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
+            print(count)
 
-    # basic threshold classification
-    df['event'] = np.where(df.v <= mu_fix+3*sigma_fix, 'Fix', 'Sac')
+            centers = np.array(centers)
+            ax[nrow][ncol].scatter(df.right_angle_x[df.event !='fix'], df.right_angle_y[df.event!='fix'], s=0.5,label='other')
+            ax[nrow][ncol].scatter(df.right_angle_x[df.event =='fix'], df.right_angle_y[df.event =='fix'], color='r', s=0.5, label='fix')
+            # for i in range(len(centers)):
+            #     plots.circle(centers[i], radius=num_samples[i]*0.5+10)
+            #plt.scatter(centers[:,0], centers[:,1], c='None', edgecolors='r')
+            ax[nrow][ncol].set_title('Window: '+str(window_size)+' Thresh: '+str(thresh))
+            ax[nrow][ncol].set_xlabel('x pixel')
+            ax[nrow][ncol].set_ylabel('y pixel')
+            ax[nrow][ncol].legend()
 
-    # plot classification
-    plots.plot_events(df, eye ='right')
-
-    #### FILTER SACCADES ####
-
-    # create non-fixation gaussian
-    sac = df.v[df.v > mu]
-    mu_sac = np.mean(sac)
-    sigma_sac = np.std(sac)
-    med_sac = np.median(sac)
-    print("non-fix mean:", mu_sac, "non-fix std:", sigma_sac)
-    print("non-fix median:", med_sac)
-    plt.hist(sac, bins=int(len(sac) / 2), normed=True)
-    y = gaussian(mu_sac, sigma_sac, sac)
-    plt.plot(sac, y, color='green')
-    plt.title('Non-Fixations')
-    plt.show()
-
-    # basic threshold classification
-    df['event2'] = np.where(df.v > mu_sac + 3 * sigma_sac, 'Sac', 'SmP')
-    df.event = np.where(df.event != 'Fix', df.event2, 'Fix')
-
-    # plot classification
-    plots.plot_events(df, eye='right')
-
-
-    #### STEP 3: Filter Saccades Using Carpenter's Theorem ####
-
-    # create sequence of events
-    seq = pd.DataFrame(sequence(df))
-
-    # plot amplitude and velocity of "Sac's" along with ideal (Carpenter's: D = 21 + 2.2A, D~ms, A~deg)
-    sacs = seq[seq.State == 'Sac']
-    plt.scatter(sacs.Amplitude, sacs.Duration_ms, label = "'non-fixation' samples")
-    x = linspace(min(sacs.Amplitude),max(sacs.Amplitude))
-    y = 21 + 2.2*x     # Carpenter's Theorem
-    plt.plot(x, y, color = 'green', label = 'D = 21 + 2.2A')
-    head = '[' + eye + ' eye] Saccades: Amplitude vs Duration'
-    plt.title(head)
-    plt.xlabel('amplitude (deg)')
-    plt.ylabel('duration (ms)')
+            nrow += 1
+        nrow = 0
+        ncol += 1
     plt.legend()
     plt.show()
+    #
+    # centers = np.array(centers)
+    # plt.scatter(pix_x[df.event !='fix'], pix_y[df.event!='fix'], s=0.5)
+    # plt.scatter(pix_x[df.event =='fix'], pix_y[df.event =='fix'], color='r', s=0.5)
+    # plt.title('Fixations using WindowSize '+str(window_size)+' and Thresh '+str(thresh))
+    # plt.xlabel('x pixel')
+    # plt.ylabel('y pixel')
+    # plt.show()
 
-    print("========= FULL SEQUENCE =========")
-    print(seq)
-    print("========= SAC SEQUENCE =========")
-    print(sacs)
-
-    # calculate error rate
-    df['error'] = (abs(sacs.Duration_ms - (21+2.2*sacs.Amplitude))/(21+2.2*sacs.Amplitude))*100
-    print("Average Error:", np.mean(df.error), "%")
-
-    # classify "Sac" into "Sac" or "Other" depending on error rate with Carpenter's Theorem
+    # # set variables
+    # if method == 'Dispersion':
+    #     var = np.abs(del_d)
+    #     x_axis = 'deg'
+    # elif method == 'Velocity':
+    #     var = v
+    #     x_axis = 'deg/s'
+    #
+    # # plot histogram
+    # head = eye + ' eye: ' + method
+    # hist, bin_edges = plots.plot_hist(df, method = method, eye = eye, title=head, x_axis=x_axis)
+    #
+    # # sanity check:
+    # prob = hist/len(hist)
+    # print('sum of hist:', np.sum(prob))
+    #
+    # # calculate distribution characteristics
+    # mu = np.mean(var)
+    # sigma = np.std(var)
+    # med = np.median(var)
+    # print("mean:", mu, "std:", sigma)
+    # print("median:", med)
+    #
+    # # set initial threshold values
+    # if method == 'Dispersion':
+    #     thresh_init = 1  # degree
+    # elif method == 'Velocity':
+    #     thresh_init = mu
+    #
+    # # create fixation gaussian
+    # fix = var[var <= thresh_init]
+    # mu_fix = np.mean(fix)
+    # sigma_fix = np.std(fix)
+    # med_fix = np.median(fix)
+    # print("fix mean:", mu_fix, "fix std:", sigma_fix)
+    # print("fix median:", med_fix)
+    #
+    # # update threshold values
+    # if method == 'Dispersion':
+    #     thresh = 1  # degree
+    # elif method == 'Velocity':
+    #     thresh = mu_fix + 3 * sigma_fix
+    #
+    # # basic threshold classification
+    # df['event'] = np.where(var <= thresh, 'Fix', 'Sac')
+    #
+    # # plot classification
+    # plots.plot_events(df, eye =eye)
+    #
+    #
+    # #### Step 3: Filter Saccades Using Velocity (I-VT) Algorithm ####
+    #
+    # # select threshold method (Velocity or Dispersion)
+    # method = 'Velocity'
+    #
+    # # set variables
+    # if method == 'Dispersion':
+    #     var = np.abs(del_d)
+    #     x_axis = 'deg'
+    # elif method == 'Velocity':
+    #     var = v
+    #     x_axis = 'deg/s'
+    #
+    # # plot histogram
+    # head = eye + ' eye: ' + method
+    # hist, bin_edges = plots.plot_hist(df, method=method, eye=eye, title=head, x_axis=x_axis)
+    #
+    # # sanity check:
+    # prob = hist / len(hist)
+    # print('sum of hist:', np.sum(prob))
+    #
+    # # calculate distribution characteristics
+    # mu = np.mean(var)
+    # sigma = np.std(var)
+    # med = np.median(var)
+    # print("mean:", mu, "std:", sigma)
+    # print("median:", med)
+    #
+    # # set initial threshold values
+    # if method == 'Dispersion':
+    #     thresh_init = 1  # degree
+    # elif method == 'Velocity':
+    #     thresh_init = mu
+    #
+    # # create non-fixation gaussian
+    # sac = var[var > thresh_init]
+    # mu_sac = np.mean(sac)
+    # sigma_sac = np.std(sac)
+    # med_sac = np.median(sac)
+    # print("non-fix mean:", mu_sac, "non-fix std:", sigma_sac)
+    # print("non-fix median:", med_sac)
+    #
+    # # update threshold values
+    # if method == 'Dispersion':
+    #     thresh = 1  # degree
+    # elif method == 'Velocity':
+    #     thresh = mu
+    #
+    # # basic threshold classification
+    # df['event2'] = np.where(var > thresh, 'Sac', 'SmP')
+    # df.event = np.where(df.event != 'Fix', df.event2, 'Fix')
+    #
+    # # plot classification
+    # plots.plot_events(df, eye=eye)
+    #
+    #
+    # #### STEP 4: Filter Saccades Using Carpenter's Theorem ####
+    #
+    # # create sequence of events
+    # seq = pd.DataFrame(sequence(df))
+    #
+    # # plot amplitude and velocity of "Sac's" along with ideal (Carpenter's: D = 21 + 2.2A, D~ms, A~deg)
+    # non_fix = seq[seq.State == 'Sac']
+    # plt.scatter(non_fix.Amplitude, non_fix.Duration_ms, label = "'non-fixation' samples")
+    # x = linspace(min(non_fix.Amplitude),max(non_fix.Amplitude))
+    # y = 21 + 2.2*x     # Carpenter's Theorem
+    # plt.plot(x, y, color = 'green', label = 'D = 21 + 2.2A')
+    # head = '[' + eye + ' eye] Saccades: Amplitude vs Duration'
+    # plt.title(head)
+    # plt.xlabel('amplitude (deg)')
+    # plt.ylabel('duration (ms)')
+    # plt.legend()
+    # plt.show()
+    #
+    # print("========= FULL SEQUENCE =========")
+    # print(seq)
+    # print("========= SAC SEQUENCE =========")
+    # print(non_fix)
+    #
+    # # calculate error rate
+    # df['error'] = (abs(non_fix.Duration_ms - (21+2.2*non_fix.Amplitude))/(21+2.2*non_fix.Amplitude))*100
+    # print("Average Error:", np.mean(df.error), "%")
+    #
+    # # classify "Sac" into "Sac" or "Other" depending on error rate with Carpenter's Theorem
 
 """
 

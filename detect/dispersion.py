@@ -20,7 +20,6 @@
 #  of or in connection with the use or performance of this software.
 ###############################################################################
 
-from . import eventstream
 from detect.eventstream import EventStream
 from detect.eventstream import EFixation
 
@@ -44,7 +43,7 @@ class Dispersion(EventStream):
     def fillWindow(self):
         try:
             while len(self.window) < self.windowSize:
-                self.window.append(self.input.next())
+                self.window.append(self.input.__next__())
         except StopIteration:
             return
 
@@ -63,7 +62,7 @@ class Dispersion(EventStream):
 
         return maxx - minx + maxy - miny
 
-    def next(self):
+    def __next__(self):
         # Fill the window with samples.
         self.fillWindow()
 
@@ -80,7 +79,7 @@ class Dispersion(EventStream):
 
             while d <= self.threshold:
                 try:
-                    self.window.append(self.input.next())
+                    self.window.append(self.input.__next__())
                 except StopIteration:
                     break
 
@@ -100,4 +99,4 @@ class Dispersion(EventStream):
             # Remove the first element
             self.window = self.window[1:]
             # Recurse.
-            return self.next()
+            return self.__next__()

@@ -1,7 +1,7 @@
 """Mixture model based on kmeans"""
 from typing import Tuple
 import numpy as np
-from common import GaussianMixture
+from Archive.common import GaussianMixture
 
 
 def estep(X: np.ndarray, mixture: GaussianMixture) -> np.ndarray:

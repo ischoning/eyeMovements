@@ -4,12 +4,7 @@ import pandas as pd
 from pylab import *
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy.stats as stats
-import math
-import viterbi
-import baum_welch
-import preprocessing_hdf5
-import plots_hdf5
+from hdf5 import plots_hdf5, preprocessing_hdf5
 
 
 def clean_sequence(df):

@@ -31,7 +31,7 @@ class EventStream(object):
     def __iter__(self):
         return self
 
-    def next(self):
+    def __next__(self):
         """Event detectors should override the next method."""
         raise StopIteration
 
@@ -39,6 +39,8 @@ class EventStream(object):
         """Compute a centroid for a window of points."""
         xs = 0
         ys = 0
+
+        #print("window:", window)
 
         if len(window) == 0:
             raise StopIteration
@@ -70,6 +72,18 @@ class EFixation(DetectorEvent):
         self.start = start
         self.end = end
 
+    def get_center(self):
+        return [self.center.x, self.center.y]
+
+    def get_num_samples(self):
+        return self.length
+
+    def get_start(self):
+        return self.start.index
+
+    def get_end(self):
+        return self.end.index
+
     def __str__(self):
         return "Fixation at (%d,%d) of %d samples, starting at sample %d" % (
         self.center.x, self.center.y, self.length, self.start.index)
@@ -84,4 +98,16 @@ class ESaccade(DetectorEvent):
 
     def __str__(self):
         return "Saccade of %d samples, (%d,%d) -> (%d,%d)" % (
+        self.length, self.start.x, self.start.y, self.end.x, self.end.y)
+
+
+class ESmoothPursuit(DetectorEvent):
+    def __init__(self, length, start, end):
+        self.type = "smooth_pursuit"
+        self.length = length
+        self.start = start
+        self.end = end
+
+    def __str__(self):
+        return "Smooth pursuit of %d samples, (%d,%d) -> (%d,%d)" % (
         self.length, self.start.x, self.start.y, self.end.x, self.end.y)

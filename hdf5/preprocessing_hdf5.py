@@ -1,13 +1,8 @@
 # import sys
 # sys.path.insert(1, "/Users/ischoning/PycharmProjects/eyeMovements/eventdetect-master")
-import pandas as pd
 from pylab import *
-import matplotlib.pyplot as plt
 import numpy as np
-from Sample_hdf5 import Sample
-import common
-import kmeans
-from scipy import signal
+from hdf5.Sample_hdf5 import Sample
 
 
 def remove_outliers(df, process = True):
