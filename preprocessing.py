@@ -29,6 +29,69 @@ def get_feats(df, eye):
 
     return pix_x, pix_y, x, y, d, v, a, del_d
 
+def calculate_features(df, smooth = False):
+    if smooth:
+        # Smooth using kernel windows of sizes 3, 5, 7
+        window_size = 7
+        data = (df.left_angle_x, df.left_angle_y, df.right_angle_x, df.right_angle_y)
+        for i in range(len(df) - window_size):
+            for elem in data:
+                # if first and last elements in window have less than 0.5 deg difference
+                if abs(elem[i] - elem[i + window_size - 1]) < 0.5:
+                    m = (elem[i] + elem[i + window_size - 1]) / 2.0
+                    # set all elements in between equal to their average
+                    for j in range(i + 1, i + window_size - 1):
+                        elem[j] = m
+
+        df.loc[:, 'left_angle_x'] = signal.savgol_filter(df.loc[:, 'left_angle_x'], window_length=101, polyorder=3)
+        df.loc[:, 'left_angle_y'] = signal.savgol_filter(df.loc[:, 'left_angle_y'], window_length=101, polyorder=3)
+        df.loc[:, 'right_angle_x'] = signal.savgol_filter(df.loc[:, 'right_angle_x'], window_length=101, polyorder=3)
+        df.loc[:, 'right_angle_y'] = signal.savgol_filter(df.loc[:, 'right_angle_y'], window_length=101, polyorder=3)
+
+    df.loc[:, 'isi'] = np.diff(df.time, prepend=0)
+
+    df.loc[:, 'd_r'] = df.right_angle_x + df.right_angle_y
+    df.loc[:, 'd_l'] = df.left_angle_x + df.left_angle_y
+
+    if smooth:
+        df.loc[:, 'd_r'] = signal.savgol_filter(df.loc[:, 'd_r'], window_length=51, polyorder=3)
+        df.loc[:, 'd_l'] = signal.savgol_filter(df.loc[:, 'd_l'], window_length=51, polyorder=3)
+
+    del_d_r = np.diff(df['d_r'], prepend=0)
+    del_d_l = np.diff(df['d_l'], prepend=0)
+
+    df.loc[:, 'vel_r'] = abs(del_d_r) / df['isi']
+    df.loc[:, 'vel_l'] = abs(del_d_l) / df['isi']
+
+    if smooth:
+        df.loc[:, 'vel_r'] = signal.savgol_filter(df.loc[:, 'vel_r'], window_length=101, polyorder=3)
+        df.loc[:, 'vel_l'] = signal.savgol_filter(df.loc[:, 'vel_l'], window_length=101, polyorder=3)
+
+    del_vel_r = np.diff(df['vel_r'], prepend=0)
+    del_vel_l = np.diff(df['vel_l'], prepend=0)
+
+    df.loc[:, 'accel_r'] = abs(del_vel_r) / df['isi']
+    df.loc[:, 'accel_l'] = abs(del_vel_l) / df['isi']
+
+    if smooth:
+        df.loc[:, 'accel_r'] = signal.savgol_filter(df.loc[:, 'accel_r'], window_length=101, polyorder=3)
+        df.loc[:, 'accel_l'] = signal.savgol_filter(df.loc[:, 'accel_l'], window_length=101, polyorder=3)
+
+    del_accel_r = np.diff(df['accel_r'], prepend=0)
+    del_accel_l = np.diff(df['accel_l'], prepend=0)
+
+    df.loc[:, 'jolt_r'] = del_accel_r / df['isi']
+    df.loc[:, 'jolt_l'] = del_accel_l / df['isi']
+
+    df.loc[:, 'del_d_r'] = del_d_r
+    df.loc[:, 'del_d_l'] = del_d_l
+
+    # remove the first three datapoints (due to intersample calculations)
+    df = df[3:]
+    df.reset_index(drop=True, inplace=True)
+
+    return df
+
 
 def remove_outliers(df):
     """
@@ -36,6 +99,9 @@ def remove_outliers(df):
     :return: a dataframe cleaned from outliers
     """
     print("Preprocessing....")
+
+    ### STEP 0: Downsample the data, remove NAN, calculate features and target ###
+
     len_init = len(df)
     # print(df.head())
 
@@ -47,24 +113,6 @@ def remove_outliers(df):
     df = df.dropna()
     df.reset_index(drop=True, inplace=True)
     len_na = len_init - len(df)
-
-
-    # Smooth using kernel windows of sizes 3, 5, 7
-    window_size = 7
-    data = (df.left_angle_x, df.left_angle_y, df.right_angle_x, df.right_angle_y)
-    for i in range(len(df)-window_size):
-        for elem in data:
-            # if first and last elements in window have less than 0.5 deg difference
-            if abs(elem[i] - elem[i+window_size-1]) < 0.5:
-                m = (elem[i] + elem[i+window_size-1])/2.0
-                # set all elements in between equal to their average
-                for j in range(i+1, i+window_size-1):
-                    elem[j] = m
-
-    df.left_angle_x = signal.savgol_filter(df.loc[:, 'left_angle_x'], window_length=101, polyorder=3)
-    df.left_angle_y = signal.savgol_filter(df.loc[:, 'left_angle_y'], window_length=101, polyorder=3)
-    df.right_angle_x = signal.savgol_filter(df.loc[:, 'right_angle_x'], window_length=101, polyorder=3)
-    df.right_angle_y = signal.savgol_filter(df.loc[:, 'right_angle_y'], window_length=101, polyorder=3)
 
     df.loc[:,'isi'] = np.diff(df.time, prepend=0)
 
@@ -81,57 +129,12 @@ def remove_outliers(df):
     df.loc[:,'target_accel'] = abs(del_target_vel) / df['isi']
 
     # Calculate amplitude, velocity, acceleration, change in acceleration
-
-    del_x_r = np.diff(df.right_angle_x, prepend=0)
-    del_y_r = np.diff(df.right_angle_y, prepend=0)
-    #df['d_r'] = np.sqrt(del_x_r ** 2 + del_y_r ** 2)
-    df.loc[:,'d_r'] = df.right_angle_x + df.right_angle_y
-    #df['d_r'] = np.convolve(df.right_angle_x, df.right_angle_y, mode='same')
-
-    del_x_l = np.diff(df.left_angle_x, prepend=0)
-    del_y_l = np.diff(df.left_angle_y, prepend=0)
-    #df['d_l'] = np.sqrt(del_x_l ** 2 + del_y_l ** 2)
-    df.loc[:,'d_l']  = df.left_angle_x + df.left_angle_y
-    #df['d_l'] = np.convolve(df.left_angle_x, df.left_angle_y, mode='same')
-
-    df.loc[:,'d_r'] = signal.savgol_filter(df.loc[:,'d_r'], window_length = 51, polyorder = 3)
-    df.loc[:,'d_l'] = signal.savgol_filter(df.loc[:,'d_l'], window_length = 51, polyorder = 3)
-
-    #scipy filtering (butterworth, wells..?)
-
-    del_d_r = np.diff(df['d_r'], prepend=0)
-    del_d_l = np.diff(df['d_l'], prepend=0)
-
-    df.loc[:,'vel_r'] = abs(del_d_r) / df['isi']
-    df.loc[:,'vel_l'] = abs(del_d_l) / df['isi']
-
-    # df.loc[:,'vel_r'] = signal.savgol_filter(df.loc[:,'vel_r'], window_length = 101, polyorder = 3)
-    # df.loc[:,'vel_l'] = signal.savgol_filter(df.loc[:,'vel_l'], window_length = 101, polyorder = 3)
-
-    del_vel_r = np.diff(df['vel_r'], prepend=0)
-    del_vel_l = np.diff(df['vel_l'], prepend=0)
-
-    df.loc[:,'accel_r'] = abs(del_vel_r) / df['isi']
-    df.loc[:,'accel_l'] = abs(del_vel_l) / df['isi']
-
-    # df.loc[:,'accel_r'] = signal.savgol_filter(df.loc[:,'accel_r'], window_length=101, polyorder=3)
-    # df.loc[:,'accel_l'] = signal.savgol_filter(df.loc[:,'accel_l'], window_length=101, polyorder=3)
-
-    del_accel_r = np.diff(df['accel_r'], prepend=0)
-    del_accel_l = np.diff(df['accel_l'], prepend=0)
-
-    df.loc[:,'jolt_r'] = del_accel_r / df['isi']
-    df.loc[:,'jolt_l'] = del_accel_l / df['isi']
-
-    df.loc[:,'del_d_r'] = del_d_r
-    df.loc[:,'del_d_l'] = del_d_l
-
-    # remove the first three datapoints (due to intersample calculations)
-    df = df[3:]
-    df.reset_index(drop=True, inplace=True)
+    df = calculate_features(df, smooth=False)
 
 
-    # initialize class
+    ### STEP 1: Clean data based on eye physiology ###
+
+    # Initialize class
     sample = Sample(df)
     # Clean data by eye physiology
     bad_data = []
@@ -156,28 +159,13 @@ def remove_outliers(df):
             bad_data.append(i)
             cond_3 += 1
 
-        # angular velocity greater than 1000 deg/s?
-        # elif current['Left']['vel'] > 100 or current['Right']['vel'] > 100:
-        #     bad_data.append(i)
-        #     cond_2 += 1
-
-        # correlation between amplitude of movement and velocity
-        # Are there sudden changes in velocity without change in position or vice versa?
-        # elif abs(best_fit['Left'][i] - current['Left']['vel'])/best_fit['Left'][i] > delta or abs(best_fit['Right'][i] - current['Right']['vel'])/best_fit['Right'][i] > delta:
-        #     bad_data.append(i)
-        #     cond_3 += 1
-
-    # correlation between amplitude of movement and velocity
-    # Are there sudden changes in velocity without change in position or vice versa?
-    # prev_len = len(df)
-    # df.drop(df[df.d_vs_vel_l > 50].index, inplace = True)
-    # df.drop(df[df.d_vs_vel_r > 50].index, inplace = True)
-    # cond_3 = prev_len - len(df)
-    #num_removed = len(bad_data) + cond_3
-
     df.drop(index=bad_data, inplace=True)
     df.reset_index(drop=True, inplace=True)
 
+
+    ### STEP 2: Smooth the clean data ###
+
+    df = calculate_features(df, smooth = True)
 
     print("================= PREPROCESSING RESULTS =====================")
     print("len(df) before processing:", len_init)
@@ -185,40 +173,10 @@ def remove_outliers(df):
     print("\nNumber of datapoints with no pupil size:", cond_1)
     print("Negative intersample velocity:", cond_2)
     print("Intersample velocity greater than 1000 deg/s:", cond_3)
-    #print("Intersample velocity equal to zero or greater than 1000 deg/s:", cond_2)
-    #print("Outliers:", cond_3)
 
     print("\nlen of 'bad data':", len(bad_data))
     print("len of data after cleaning:", len(df))
 
     print("=============================================================")
-
-    # df['d_vs_vel_l'] = np.divide(df.d_l, df.vel_l)
-    # plt.scatter(df.vel_l, df.d_vs_vel_l, s=2)
-    # plt.title('left eye: dist vs ratio dist/vel')
-    # plt.xlabel('deg/s')
-    # plt.ylabel('ratio (d/vel)')
-    # plt.show()
-    # df['d_vs_vel_r'] = np.divide(df.d_r, df.vel_r)
-    # plt.scatter(df.vel_r, df.d_vs_vel_r, s=2)
-    # plt.title('right eye: dist vs ratio dist/vel')
-    # plt.xlabel('deg/s')
-    # plt.ylabel('ratio (d/vel)')
-    # plt.show()
-    #
-    # df['vel_vs_d_l'] = np.divide(df.vel_l, df.d_l)
-    # plt.scatter(df.d_l, df.vel_vs_d_l, s=2)
-    # plt.title('left eye: dist vs ratio vel/dist')
-    # plt.xlabel('deg')
-    # plt.ylabel('ratio (vel/d)')
-    # plt.show()
-    # df['vel_vs_d_r'] = np.divide(df.vel_r, df.d_r)
-    # plt.scatter(df.d_l, df.vel_vs_d_r, s=2)
-    # plt.title('right eye: dist vs ratio vel/dist')
-    # plt.xlabel('deg')
-    # plt.ylabel('ratio (vel/d)')
-    # plt.show()
-
-    #run_kmeans(df)
 
     return df
