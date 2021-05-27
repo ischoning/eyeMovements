@@ -35,16 +35,16 @@ def remove_outliers(df):
     :param df: a dataframe with the below columns
     :return: a dataframe cleaned from outliers
     """
-
+    print("Preprocessing....")
     len_init = len(df)
-    print(df)
+    # print(df.head())
 
     # sample rate: 100 samples per sec
     df = df[1000:7000]
 
     # Remove NA's
     df.replace([np.inf, -np.inf], np.nan)
-    df.dropna(inplace=True)
+    df = df.dropna()
     df.reset_index(drop=True, inplace=True)
     len_na = len_init - len(df)
 
@@ -66,65 +66,65 @@ def remove_outliers(df):
     df.right_angle_x = signal.savgol_filter(df.loc[:, 'right_angle_x'], window_length=101, polyorder=3)
     df.right_angle_y = signal.savgol_filter(df.loc[:, 'right_angle_y'], window_length=101, polyorder=3)
 
-    df['isi'] = np.diff(df.time, prepend=0)
+    df.loc[:,'isi'] = np.diff(df.time, prepend=0)
 
     # Calculate target
-    df['target_d'] = df['target_angle_x'] + df['target_angle_y']
+    df.loc[:,'target_d'] = df['target_angle_x'] + df['target_angle_y']
     del_target_d = np.diff(df['target_d'], prepend=0)
-    df['target_vel'] = abs(del_target_d) / df['isi']
+    df.loc[:,'target_vel'] = abs(del_target_d) / df['isi']
     for i in range(1,len(df)-1):
         prev = df.target_vel[i-1]
         next = df.target_vel[i+1]
         if df.target_vel[i] == 0 and prev != 0 and next != 0:
             df.target_vel[i] = abs(next+prev)/2.0
     del_target_vel = np.diff(df.target_vel, prepend=0)
-    df['target_accel'] = abs(del_target_vel) / df['isi']
+    df.loc[:,'target_accel'] = abs(del_target_vel) / df['isi']
 
     # Calculate amplitude, velocity, acceleration, change in acceleration
 
     del_x_r = np.diff(df.right_angle_x, prepend=0)
     del_y_r = np.diff(df.right_angle_y, prepend=0)
     #df['d_r'] = np.sqrt(del_x_r ** 2 + del_y_r ** 2)
-    df['d_r'] = df.right_angle_x + df.right_angle_y
+    df.loc[:,'d_r'] = df.right_angle_x + df.right_angle_y
     #df['d_r'] = np.convolve(df.right_angle_x, df.right_angle_y, mode='same')
 
     del_x_l = np.diff(df.left_angle_x, prepend=0)
     del_y_l = np.diff(df.left_angle_y, prepend=0)
     #df['d_l'] = np.sqrt(del_x_l ** 2 + del_y_l ** 2)
-    df['d_l']  = df.left_angle_x + df.left_angle_y
+    df.loc[:,'d_l']  = df.left_angle_x + df.left_angle_y
     #df['d_l'] = np.convolve(df.left_angle_x, df.left_angle_y, mode='same')
 
-    df['d_r'] = signal.savgol_filter(df.loc[:,'d_r'], window_length = 51, polyorder = 3)
-    df['d_l'] = signal.savgol_filter(df.loc[:,'d_l'], window_length = 51, polyorder = 3)
+    df.loc[:,'d_r'] = signal.savgol_filter(df.loc[:,'d_r'], window_length = 51, polyorder = 3)
+    df.loc[:,'d_l'] = signal.savgol_filter(df.loc[:,'d_l'], window_length = 51, polyorder = 3)
 
     #scipy filtering (butterworth, wells..?)
 
     del_d_r = np.diff(df['d_r'], prepend=0)
     del_d_l = np.diff(df['d_l'], prepend=0)
 
-    df['vel_r'] = abs(del_d_r) / df['isi']
-    df['vel_l'] = abs(del_d_l) / df['isi']
+    df.loc[:,'vel_r'] = abs(del_d_r) / df['isi']
+    df.loc[:,'vel_l'] = abs(del_d_l) / df['isi']
 
-    df['vel_r'] = signal.savgol_filter(df.loc[:,'vel_r'], window_length = 101, polyorder = 3)
-    df['vel_l'] = signal.savgol_filter(df.loc[:,'vel_l'], window_length = 101, polyorder = 3)
+    # df.loc[:,'vel_r'] = signal.savgol_filter(df.loc[:,'vel_r'], window_length = 101, polyorder = 3)
+    # df.loc[:,'vel_l'] = signal.savgol_filter(df.loc[:,'vel_l'], window_length = 101, polyorder = 3)
 
     del_vel_r = np.diff(df['vel_r'], prepend=0)
     del_vel_l = np.diff(df['vel_l'], prepend=0)
 
-    df['accel_r'] = abs(del_vel_r) / df['isi']
-    df['accel_l'] = abs(del_vel_l) / df['isi']
+    df.loc[:,'accel_r'] = abs(del_vel_r) / df['isi']
+    df.loc[:,'accel_l'] = abs(del_vel_l) / df['isi']
 
-    df['accel_r'] = signal.savgol_filter(df.loc[:,'accel_r'], window_length=101, polyorder=3)
-    df['accel_l'] = signal.savgol_filter(df.loc[:,'accel_l'], window_length=101, polyorder=3)
+    # df.loc[:,'accel_r'] = signal.savgol_filter(df.loc[:,'accel_r'], window_length=101, polyorder=3)
+    # df.loc[:,'accel_l'] = signal.savgol_filter(df.loc[:,'accel_l'], window_length=101, polyorder=3)
 
     del_accel_r = np.diff(df['accel_r'], prepend=0)
     del_accel_l = np.diff(df['accel_l'], prepend=0)
 
-    df['jolt_r'] = del_accel_r / df['isi']
-    df['jolt_l'] = del_accel_l / df['isi']
+    df.loc[:,'jolt_r'] = del_accel_r / df['isi']
+    df.loc[:,'jolt_l'] = del_accel_l / df['isi']
 
-    df['del_d_r'] = del_d_r
-    df['del_d_l'] = del_d_l
+    df.loc[:,'del_d_r'] = del_d_r
+    df.loc[:,'del_d_l'] = del_d_l
 
     # remove the first three datapoints (due to intersample calculations)
     df = df[3:]

@@ -400,6 +400,124 @@ def main():
     df = clean_sequence(df)
 
 
+"""
+
+    # if velocity is greater than 3 standard deviations from the mean of the pmf, classify the point as saccade, else fixation
+    # NOTE that the white space in the plot is due to jump in ms between events
+    states = ['Sac', 'Fix']
+    df['event'] = np.where(df.vel_l <= 0.02, 'Fix', 'Sac')
+
+    print('=============== STEP 1: Filter Saccades ===============')
+
+    # estimate priors (sample means)
+    mean_fix = np.mean(df[df.event == 'Fix']['vel_r'])
+    mean_sac = np.mean(df[df.event == 'Sac']['vel_r'])
+    std_fix = np.std(df[df.event == 'Fix']['vel_r'])
+    std_sac = np.std(df[df.event == 'Sac']['vel_r'])
+    print("Fixation: mean =", mean_fix, "standard deviation =", std_fix)
+    print("Saccade: mean =", mean_sac, "standard deviation =", std_sac)
+
+    print('\n============== BEGIN VITERBI ==============')
+    # first run EM to get best match params (priors, trans, emission probabilities)
+    # then run Viterbi HMM algorithm to output the most likely sequence given the params calculated in EM
+    obs = df.vel_l.astype(str)
+    obs = obs.tolist()
+    states = ['Sac', 'Fix']
+    start_p = [0.5, 0.5]
+    trans_p = np.array([[0.5, 0.5],
+                        [0.5, 0.5]])
+    Sac = []
+    Fix = []
+    for o in obs:
+        x = float(o)
+        if o not in Sac:
+            Sac.append(gaussian(mean_sac, std_sac, x))
+        if o not in Fix:
+            Fix.append(gaussian(mean_fix, std_fix, x))
+
+    emit_p = np.array([Sac, Fix])
+    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
+    print(df['hidden_state'].value_counts())
+    print('=============== END VITERBI ===============')
+
+    print('\n============== BEGIN BAUM-WELCH ==============')
+    trans_p, emit_p = baum_welch.run(obs, states, start_p, trans_p, emit_p)
+    print('============== END BAUM-WELCH ==============')
+
+    print('\n============== BEGIN UPDATED VITERBI ==============')
+    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
+    print('=============== END UPDATED VITERBI ===============')
+
+    df = clean_sequence(df)
+
+    print('\n=============== STEP 2: Classify Fixations and Smooth Pursuits ===============')
+
+    # filter out Saccades
+    df = df[df.hidden_state != 'Sac']
+    df.reset_index(drop=True, inplace=True)
+
+    ang_vel = df['ang_vel']
+    states = ['Smooth Pursuit', 'Fixation']
+    plt.plot(df.time, df.vel_l)
+    plt.show()
+
+    df['fix1 smp0'] = np.where(df.vel_l <= 0.02, 1, 0)
+    event = df['fix1 smp0']
+    print_events(df.time, event=event, states=states)
+
+    # estimate priors (sample means)
+    mean_fix = np.mean(df[event == 'Fix']['vel_r'])
+    mean_smp = np.mean(df[event == 'SmP']['vel_r'])
+    std_fix = np.std(df[event == 'Fix']['vel_r'])
+    std_smp = np.std(df[event == 'SmP']['vel_r'])
+    print("Fixation: mean =", mean_fix, "standard deviation =", std_fix)
+    print("Smooth Pursuit: mean =", mean_smp, "standard deviation =", std_smp)
+
+    print('\n============== BEGIN VITERBI ==============')
+
+    # first run EM to get best match params (priors, trans, emission probabilities)
+    # then run Viterbi HMM algorithm to output the most likely sequence given the params calculated in EM
+    obs = ang_vel.astype(str)
+    obs = obs.tolist()
+    states = ['SmP', 'Fix']
+    # p = math.log(0.5)
+    start_p = [0.5, 0.5]
+    trans_p = np.array([[0.5, 0.5],
+                        [0.5, 0.5]])
+    # Note: not possible to have two contiguous saccades without a fixation (or smooth pursuit)
+    # in between
+    SmP = []
+    Fix = []
+    for o in obs:
+        x = float(o)
+        if o not in SmP:
+            SmP.append(gaussian(mean_sac, std_sac, x))
+        if o not in Fix:
+            Fix.append(gaussian(mean_fix, std_fix, x))
+
+    emit_p = np.array([SmP, Fix])
+    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
+    print(df['hidden_state'].value_counts())
+
+    print('=============== END VITERBI ===============')
+
+    print('\n============== BEGIN BAUM-WELCH ==============')
+
+    trans_p, emit_p = baum_welch.run(obs, states, start_p, trans_p, emit_p)
+
+    print('============== END BAUM-WELCH ==============')
+
+    print('\n============== BEGIN UPDATED VITERBI ==============')
+
+    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
+    # print(len(df['hidden_state']))
+    print(df['hidden_state'].value_counts())
+
+    print('=============== END UPDATED VITERBI ===============')
+
+"""
+
+
 if __name__ == "__main__":
     # Testing
     # hello("Isabella")

@@ -83,14 +83,14 @@ def label_fixes(df, eye, ws = 0, thresh = 0, method='IDT'):
     count = 0
     #print('len(centers):', len(centers))
     for i in range(len(starts)):
-        df.loc[starts[i]:ends[i], ("event")] = 'fix'
+        df.loc[starts[i]:ends[i], ('event')] = 'fix'
         # if the end of the data is all fixations
         if i == len(starts) - 1:
-            df.loc[starts[i]:len(starts), ("event")] = 'fix'
+            df.loc[starts[i]:len(starts), ('event')] = 'fix'
         # if there are only 1 or 2 samples between fixations, combine them
         elif starts[i + 1] - ends[i] <= 2:
             count += 1
-            df.loc[ends[i]:starts[i + 1], ("event")] = 'fix'
+            df.loc[ends[i]:starts[i + 1], ('event')] = 'fix'
     # print(count)
 
     # # label the saccades using velocity threshold (22 deg/s according to Houpt)
@@ -170,14 +170,14 @@ def sequence(df):
             end = i+1
             sequence.append({'State':prev_st, 'Num_samples':count, 'Amplitude':amp, 'Duration_ms':t, 'start':start, 'end':end})
 
-    print("Sequence:", sequence)
+    # print("Sequence:", sequence)
 
     return sequence
 
 
 def main():
 
-    #### STEP 0: Load Data ####
+    #### STEP 0: Load Data and Set Constants ####
     # files
     file = '/Users/ischoning/PycharmProjects/GitHub/data/varjo_events_12_0_0.txt'
 
@@ -188,6 +188,12 @@ def main():
 
     # select eye data to analyze ('left' or 'right')
     eye = 'left'
+
+    # select method to use for fixation classification ('IVT' or 'IDT')
+    fix_method_to_use = 'IDT'
+
+    # select method to use for saccade and smooth pursuit classification ('Carpenter' or 'IVT')
+    sac_method_to_use = 'IVT'
 
 
     #### STEP 1: Clean Outliers ####
@@ -223,7 +229,10 @@ def main():
     plots.plot_fixations_IDT(df.copy(),window_sizes,threshes)
     best_window_size = 20
     best_thresh = 0.5 # in degrees
-    label_fixes(df.copy(), eye=eye, ws=best_window_size, thresh=best_thresh, method = 'IDT')
+    if fix_method_to_use == 'IDT':
+        df = label_fixes(df.copy(), eye=eye, ws=best_window_size, thresh=best_thresh, method = 'IDT')
+    else:
+        label_fixes(df.copy(), eye=eye, ws=best_window_size, thresh=best_thresh, method = 'IDT')
 
 
     #### STEP 2B: Filter Fixations Using Velocity (I-VT) Algorithm ####
@@ -233,21 +242,33 @@ def main():
     # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
     plots.plot_fixations_IVT(df.copy(),threshes)
     best_thresh = 3 # in degrees per sample
-    df = label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
+    if fix_method_to_use == 'IVT':
+        df = label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
+    else:
+        label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
 
 
     #### STEP 3A: Filter Saccades Using Velocity Threshold ####
     # saccade if intersample velocity > 22 deg/s (Houpt)
     df_copy = df.copy()
-    df['event'] = np.where(v > 22, 'sac', df.event)
-    df['event'] = np.where(df.event == 'other', 'smp', df.event)
-    plots.plot_events(df,eye,'IVT')
+    df_copy['event'] = np.where(df_copy.v > 22, 'sac', df_copy.event)
+    # relabel the remaining 'other' as smooth pursuit
+    df_copy['event'] = np.where(df_copy.event == 'other', 'smp', df_copy.event)
+    plots.plot_events(df_copy,eye,'IVT')
+
+    # print results
+    seq = pd.DataFrame(sequence(df_copy))
+    print("================= I-VT RESULTS =====================")
+    print("Num Fix Events:", len(seq[seq.State == 'fix']))
+    print("Num SmP Events:", len(seq[seq.State == 'smp']))
+    print("Num Sac Events:", len(seq[seq.State == 'sac']))
+    print("=============================================================")
 
 
     #### STEP 3B: Filter Saccades Using Carpenter's Theorem ####
 
     # create sequence of events
-    df = df_copy
+    df = df.copy()
     seq = pd.DataFrame(sequence(df))
 
     # plot amplitude and velocity of others along with ideal (Carpenter's: D = 21 + 2.2A, D~ms, A~deg)
@@ -268,141 +289,32 @@ def main():
 
     # classify other into saccade or smooth pursuit depending on error rate with Carpenter's Theorem
     seq['State'] = np.where(seq.State == 'other', np.where(seq.error < 0.1, 'sac', seq.State),seq.State)
+    # relabel the remaining 'other' as smooth pursuit
     seq['State'] = np.where(seq.State == 'other', 'smp', seq.State)
 
-    print("========= FULL SEQUENCE =========")
-    print(seq)
-    print("========= OTHER SEQUENCE =========")
-    print(seq[seq.State == 'other'])
-    print("========= SAC SEQUENCE =========")
-    print(seq[seq.State == 'sac'])
-
-    sac = seq[seq.State == 'sac']
-    print("Average Error:", np.mean(sac.error)*100, "%")
-
-    # check results
+    # remap seq State to the dataframe df
     for i in range(len(seq)):
-        df['event'][seq.start[i]:seq.end[i]] = seq.State[i]
+        df.loc[seq.start[i]:seq.end[i],'event'] = seq.State[i]
 
     plots.plot_events(df, eye, 'Carpenter')
 
+    sac = seq[seq.State == 'sac']
 
-"""
+    # print results
+    print("================= CARPENTER RESULTS =====================")
+    print("Num Fix Events:", len(seq[seq.State == 'fix']))
+    print("Num SmP Events:", len(seq[seq.State == 'smp']))
+    print("Num Sac Events:", len(seq[seq.State == 'sac']))
+    # calculate error between sac events and Carpenters Theorem
+    print("Average Error:", np.round(abs(np.mean(sac.error)),3)*100, "%")
+    print("=============================================================")
 
-    # if velocity is greater than 3 standard deviations from the mean of the pmf, classify the point as saccade, else fixation
-    # NOTE that the white space in the plot is due to jump in ms between events
-    states = ['Sac', 'Fix']
-    df['event'] = np.where(df.vel_l <= 0.02, 'Fix', 'Sac')
+    # print("Full Sequence:")
+    # print(seq)
+    print("Sac Sequence (Carpenter):")
+    print(sac)
+    print("=============================================================")
 
-    print('=============== STEP 1: Filter Saccades ===============')
-
-    # estimate priors (sample means)
-    mean_fix = np.mean(df[df.event == 'Fix']['vel_r'])
-    mean_sac = np.mean(df[df.event == 'Sac']['vel_r'])
-    std_fix = np.std(df[df.event == 'Fix']['vel_r'])
-    std_sac = np.std(df[df.event == 'Sac']['vel_r'])
-    print("Fixation: mean =", mean_fix, "standard deviation =", std_fix)
-    print("Saccade: mean =", mean_sac, "standard deviation =", std_sac)
-
-    print('\n============== BEGIN VITERBI ==============')
-    # first run EM to get best match params (priors, trans, emission probabilities)
-    # then run Viterbi HMM algorithm to output the most likely sequence given the params calculated in EM
-    obs = df.vel_l.astype(str)
-    obs = obs.tolist()
-    states = ['Sac', 'Fix']
-    start_p = [0.5, 0.5]
-    trans_p = np.array([[0.5, 0.5],
-                        [0.5, 0.5]])
-    Sac = []
-    Fix = []
-    for o in obs:
-        x = float(o)
-        if o not in Sac:
-            Sac.append(gaussian(mean_sac, std_sac, x))
-        if o not in Fix:
-            Fix.append(gaussian(mean_fix, std_fix, x))
-
-    emit_p = np.array([Sac, Fix])
-    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
-    print(df['hidden_state'].value_counts())
-    print('=============== END VITERBI ===============')
-
-    print('\n============== BEGIN BAUM-WELCH ==============')
-    trans_p, emit_p = baum_welch.run(obs, states, start_p, trans_p, emit_p)
-    print('============== END BAUM-WELCH ==============')
-
-    print('\n============== BEGIN UPDATED VITERBI ==============')
-    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
-    print('=============== END UPDATED VITERBI ===============')
-
-    df = clean_sequence(df)
-
-    print('\n=============== STEP 2: Classify Fixations and Smooth Pursuits ===============')
-
-    # filter out Saccades
-    df = df[df.hidden_state != 'Sac']
-    df.reset_index(drop=True, inplace=True)
-
-    ang_vel = df['ang_vel']
-    states = ['Smooth Pursuit', 'Fixation']
-    plt.plot(df.time, df.vel_l)
-    plt.show()
-
-    df['fix1 smp0'] = np.where(df.vel_l <= 0.02, 1, 0)
-    event = df['fix1 smp0']
-    print_events(df.time, event=event, states=states)
-
-    # estimate priors (sample means)
-    mean_fix = np.mean(df[event == 'Fix']['vel_r'])
-    mean_smp = np.mean(df[event == 'SmP']['vel_r'])
-    std_fix = np.std(df[event == 'Fix']['vel_r'])
-    std_smp = np.std(df[event == 'SmP']['vel_r'])
-    print("Fixation: mean =", mean_fix, "standard deviation =", std_fix)
-    print("Smooth Pursuit: mean =", mean_smp, "standard deviation =", std_smp)
-
-    print('\n============== BEGIN VITERBI ==============')
-
-    # first run EM to get best match params (priors, trans, emission probabilities)
-    # then run Viterbi HMM algorithm to output the most likely sequence given the params calculated in EM
-    obs = ang_vel.astype(str)
-    obs = obs.tolist()
-    states = ['SmP', 'Fix']
-    # p = math.log(0.5)
-    start_p = [0.5, 0.5]
-    trans_p = np.array([[0.5, 0.5],
-                        [0.5, 0.5]])
-    # Note: not possible to have two contiguous saccades without a fixation (or smooth pursuit)
-    # in between
-    SmP = []
-    Fix = []
-    for o in obs:
-        x = float(o)
-        if o not in SmP:
-            SmP.append(gaussian(mean_sac, std_sac, x))
-        if o not in Fix:
-            Fix.append(gaussian(mean_fix, std_fix, x))
-
-    emit_p = np.array([SmP, Fix])
-    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
-    print(df['hidden_state'].value_counts())
-
-    print('=============== END VITERBI ===============')
-
-    print('\n============== BEGIN BAUM-WELCH ==============')
-
-    trans_p, emit_p = baum_welch.run(obs, states, start_p, trans_p, emit_p)
-
-    print('============== END BAUM-WELCH ==============')
-
-    print('\n============== BEGIN UPDATED VITERBI ==============')
-
-    df['hidden_state'] = viterbi.run(obs, states, start_p, trans_p, emit_p)
-    # print(len(df['hidden_state']))
-    print(df['hidden_state'].value_counts())
-
-    print('=============== END UPDATED VITERBI ===============')
-
-"""
 
 if __name__ == "__main__":
     # Testing
