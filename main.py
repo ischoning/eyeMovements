@@ -224,7 +224,7 @@ def main():
 
     # determine ideal window size and threshold
     window_sizes = (15,20,25,30)
-    threshes = (0.75,1) # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
+    threshes = (0.50,0.75,1) # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
     # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
     plots.plot_fixations_IDT(df.copy(),window_sizes,threshes)
     best_window_size = 20

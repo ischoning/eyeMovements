@@ -167,7 +167,7 @@ def plot_pmf(data, title='Velocity', x_axis='deg/s'):
 
 def plot_fixations_IDT(df,window_sizes, threshes):
 
-    fig, ax = plt.subplots(len(threshes),len(window_sizes), figsize=(16,10))
+    fig, ax = plt.subplots(len(threshes),len(window_sizes), figsize=(4*len(window_sizes),4*len(threshes)))
 
     nrow = 0
     ncol = 0
