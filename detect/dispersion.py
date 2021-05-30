@@ -39,6 +39,7 @@ class Dispersion(EventStream):
         self.windowSize = windowSize
         self.threshold = threshold
         self.window = []
+        self.prev = self.input.__next__()
 
     def fillWindow(self):
         try:

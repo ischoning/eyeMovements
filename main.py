@@ -74,14 +74,11 @@ def label_fixes(df, eye, ws = 0, thresh = 0, method='IDT'):
         num_samples.append(f.get_num_samples())
         starts.append(f.get_start())
         ends.append(f.get_end())
-        # print(f)
-    #print("Number of fix events:", len(centers))
-    #print("Number of fix samples:", np.sum(num_samples))
+        #print(f)
 
     # label the fixations in the dataframe
     df['event'] = 'other'
     count = 0
-    #print('len(centers):', len(centers))
     for i in range(len(starts)):
         df.loc[starts[i]:ends[i], ('event')] = 'fix'
         # if the end of the data is all fixations
@@ -91,10 +88,6 @@ def label_fixes(df, eye, ws = 0, thresh = 0, method='IDT'):
         elif starts[i + 1] - ends[i] <= 2:
             count += 1
             df.loc[ends[i]:starts[i + 1], ('event')] = 'fix'
-    # print(count)
-
-    # # label the saccades using velocity threshold (22 deg/s according to Houpt)
-    # df['event'] = np.where(df.v >= 22, 'sac', df.event)
 
     # plot classification
     plots.plot_events(df, eye=eye, method = method)
@@ -135,10 +128,6 @@ def print_events(df):
     print('Number of Other events:', sum(df.event == 'other'))
 
     return None
-
-
-def gaussian(mu, sigma, x):
-    return 1.0/sqrt(2*pi*sigma**2)*exp(-(x-mu)**2/(2*sigma**2))
 
 
 def sequence(df):
@@ -189,11 +178,8 @@ def main():
     # select eye data to analyze ('left' or 'right')
     eye = 'left'
 
-    # select method to use for fixation classification ('IVT' or 'IDT')
-    fix_method_to_use = 'IDT'
-
     # select method to use for saccade and smooth pursuit classification ('Carpenter' or 'IVT')
-    sac_method_to_use = 'IVT'
+    sac_method_to_use = 'Carpenter'
 
 
     #### STEP 1: Clean Outliers ####
@@ -210,42 +196,24 @@ def main():
     df['a'] = a
     df['del_d'] = del_d
 
-    #df['v'] = np.convolve(df.vel_r, df.vel_l, mode='same')/(2*len(df))
-    #df['a'] = np.convolve(df.accel_r, df.accel_l, mode='same')
-
     # plot results after removing outliers
     plots.plot_path(df)
     plots.plot_vs_time(df, feat = d, label ='Amplitude', eye = eye)
     plots.plot_vs_time(df, feat = v, label ='Velocity', eye = eye)
-    #plots.plot_vs_time(df, feat = df.a, label = 'Acceleration', eye=eye)
+    plots.plot_hist(df, method = 'Dispersion', eye = eye, title = 'Dispersion Histogram', x_axis='deg')
+    plots.plot_hist(df, method='Velocity', eye=eye, title='Velocity Histogram', x_axis='deg')
 
 
-    #### STEP 2A: Filter Fixations Using Dispersion (I-DT) Algorithm ####
+    #### STEP 2: Filter Fixations Using Dispersion (I-DT) Algorithm ####
 
     # determine ideal window size and threshold
-    window_sizes = (15,20,25,30)
-    threshes = (0.50,0.75,1) # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
+    window_sizes = (10,15,20)
+    threshes = (0.5,1,1.5) # 40.4 pixels in 1 deg (overleaf doc sacVelocity.py)
     # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
-    plots.plot_fixations_IDT(df.copy(),window_sizes,threshes)
+    plots.plot_IDT_thresh_results(df.copy(),window_sizes,threshes)
     best_window_size = 20
     best_thresh = 0.5 # in degrees
-    if fix_method_to_use == 'IDT':
-        df = label_fixes(df.copy(), eye=eye, ws=best_window_size, thresh=best_thresh, method = 'IDT')
-    else:
-        label_fixes(df.copy(), eye=eye, ws=best_window_size, thresh=best_thresh, method = 'IDT')
-
-
-    #### STEP 2B: Filter Fixations Using Velocity (I-VT) Algorithm ####
-
-    # run with optimal window size and threshold
-    threshes = [1, 2, 3] # pixels per sample below which fixation
-    # using 1 deg from Pieter Blignaut's paper: Fixation identification: "The optimum threshold for a dispersion algorithm"
-    plots.plot_fixations_IVT(df.copy(),threshes)
-    best_thresh = 3 # in degrees per sample
-    if fix_method_to_use == 'IVT':
-        df = label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
-    else:
-        label_fixes(df.copy(), eye=eye, thresh=best_thresh, method = 'IVT')
+    df = label_fixes(df.copy(), eye=eye, ws=best_window_size, thresh=best_thresh, method = 'IDT')
 
 
     #### STEP 3A: Filter Saccades Using Velocity Threshold ####

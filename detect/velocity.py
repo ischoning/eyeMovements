@@ -47,6 +47,13 @@ class Velocity(EventStream):
 		self.threshold = threshold
 		self.prev = self.input.__next__()
 
+	def fillWindow(self):
+		try:
+			while len(self.window) < self.windowSize:
+				self.window.append(self.input.__next__())
+		except StopIteration:
+			return
+
 	def intersampleVelocity(self,prev,curr):
 		dx = curr.x - prev.x
 		dy = curr.y - prev.y

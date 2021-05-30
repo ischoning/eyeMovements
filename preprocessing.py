@@ -2,8 +2,6 @@
 # sys.path.insert(1, "/Users/ischoning/PycharmProjects/eyeMovements/eventdetect-master")
 from pylab import *
 import numpy as np
-from Sample_window import Sample
-from Archive import common, kmeans
 from scipy import signal
 
 
@@ -116,6 +114,39 @@ def remove_outliers(df):
 
     df.loc[:,'isi'] = np.diff(df.time, prepend=0)
 
+    # Calculate amplitude, velocity, acceleration, change in acceleration
+    df = calculate_features(df, smooth=False)
+
+
+    ### STEP 1: Clean data based on eye physiology ###
+
+    bad_data = [] # list of indices
+    cond_1, cond_2, cond_3, cond_4, cond_5 = 0, 0, 0, 0, 0
+    for i in range(1, len(df)-2):
+
+        # no pupil size?
+        if df.loc[i,'left_pupil_measure1'] == 0 or df.loc[i,'right_pupil_measure1'] == 0:
+            bad_data.append(i)
+            cond_1 += 1
+
+        # remove negative velocity (should be abs)
+        elif df.loc[i,'vel_l'] < 0 or df.loc[i,'vel_r'] < 0:
+            bad_data.append(i)
+            cond_2 += 1
+
+        # angular velocity greater than 1000 deg/s?
+        elif df.loc[i,'vel_l'] > 1000 or df.loc[i,'vel_r'] > 1000:
+            bad_data.append(i)
+            cond_3 += 1
+
+    df.drop(index=bad_data, inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
+
+    ### STEP 2: Smooth the clean data ###
+
+    df = calculate_features(df, smooth = True)
+
     # Calculate target
     df.loc[:,'target_d'] = df['target_angle_x'] + df['target_angle_y']
     del_target_d = np.diff(df['target_d'], prepend=0)
@@ -127,45 +158,6 @@ def remove_outliers(df):
             df.target_vel[i] = abs(next+prev)/2.0
     del_target_vel = np.diff(df.target_vel, prepend=0)
     df.loc[:,'target_accel'] = abs(del_target_vel) / df['isi']
-
-    # Calculate amplitude, velocity, acceleration, change in acceleration
-    df = calculate_features(df, smooth=False)
-
-
-    ### STEP 1: Clean data based on eye physiology ###
-
-    # Initialize class
-    sample = Sample(df)
-    # Clean data by eye physiology
-    bad_data = []
-    cond_1, cond_2, cond_3 = 0, 0, 0
-    for i in range(1, len(df)-2):
-
-        prev, current, next = sample.get_window(i)
-        delta = 0.05
-
-        # no pupil size?
-        if current['Left']['pupil'] == 0 or current['Right']['pupil'] == 0:
-            bad_data.append(i)
-            cond_1 += 1
-
-        # remove negative velocity (should be abs)
-        elif current['Left']['vel'] < 0 or current['Right']['vel'] < 0:
-            bad_data.append(i)
-            cond_2 += 1
-
-        # angular velocity greater than 1000 deg/s?
-        elif current['Left']['vel'] > 1000 or current['Right']['vel'] > 1000:
-            bad_data.append(i)
-            cond_3 += 1
-
-    df.drop(index=bad_data, inplace=True)
-    df.reset_index(drop=True, inplace=True)
-
-
-    ### STEP 2: Smooth the clean data ###
-
-    df = calculate_features(df, smooth = True)
 
     print("================= PREPROCESSING RESULTS =====================")
     print("len(df) before processing:", len_init)

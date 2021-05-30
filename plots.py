@@ -111,6 +111,7 @@ def plot_events(df, eye = 'Left', method = ''):
     fig, ax = plt.subplots(figsize=pltsize)
 
     ax.plot(df['time'], d, color='red')
+    ax.plot(df['time'], df['target_d'], color='black',linewidth =0.5, label = 'target')
 
     # https://matplotlib.org/3.1.1/gallery/lines_bars_and_markers/fill_between_demo.html
     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
@@ -151,6 +152,11 @@ def plot_hist(df, method, eye, title, x_axis, density=False):
     elif method == 'Dispersion':
         result, bin_edges = np.histogram(np.abs(del_d), int(len(del_d) / 2), density=density)
         plt.hist(np.abs(d), bins=int(len(del_d) / 2), density=density, label='intersample displacement', alpha=0.5)
+        try:
+            plt.hist(np.abs(df.target_d[df['target_d'] != 0]), bins=int(len(v)/2), density=density, color='red', label='target', alpha = 0.5)
+        except: pass
+    else:
+        raise Exception('method must be "Velocity" or "Dispersion" but',method,'was given instead')
     plt.title(title)
     plt.ylabel('Count')
     plt.xlabel(x_axis)
@@ -160,12 +166,13 @@ def plot_hist(df, method, eye, title, x_axis, density=False):
     return result, bin_edges
 
 
+
 def plot_pmf(data, title='Velocity', x_axis='deg/s'):
     return plot_hist(data, title=title, x_axis=x_axis, density=True)
 
 
 
-def plot_fixations_IDT(df,window_sizes, threshes):
+def plot_IDT_thresh_results(df, window_sizes, threshes):
 
     fig, ax = plt.subplots(len(threshes),len(window_sizes), figsize=(4*len(window_sizes),4*len(threshes)))
 
@@ -185,14 +192,10 @@ def plot_fixations_IDT(df,window_sizes, threshes):
                 num_samples.append(f.get_num_samples())
                 starts.append(f.get_start())
                 ends.append(f.get_end())
-                #print(f)
-            #print("Number of fix events:", len(centers))
-            #print("Number of fix samples:", np.sum(num_samples))
 
             # label the fixations in the dataframe
             df['event'] = 'other'
             count = 0
-            #print('len(centers):', len(centers))
             for i in range(len(starts)):
                 df.loc[starts[i]:ends[i], ("event")] = 'fix'
                 # if the end of the data is all fixations
@@ -202,10 +205,6 @@ def plot_fixations_IDT(df,window_sizes, threshes):
                 elif starts[i+1]-ends[i] <= 2:
                     count += 1
                     df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
-            #print(count)
-
-            # # label the saccades using velocity threshold (22 deg/s according to Houpt)
-            # df['event'] = np.where(df.v >= 22, 'sac', df.event)
 
             centers = np.array(centers)
             ax[nrow][ncol].scatter(df.x[df.event !='fix'], df.y[df.event!='fix'], s=0.5,label='other')
@@ -226,10 +225,8 @@ def plot_fixations_IDT(df,window_sizes, threshes):
     plt.show()
 
 
-
-
-def plot_fixations_IVT(df,threshes):
-
+""" # ARCHIVED
+def plot_IVT_thresh_results(df, threshes):
 
     fig, ax = plt.subplots(1,len(threshes), figsize=(16,6))
 
@@ -247,9 +244,6 @@ def plot_fixations_IVT(df,threshes):
             num_samples.append(f.get_num_samples())
             starts.append(f.get_start())
             ends.append(f.get_end())
-            #print(f)
-        #print("Number of fix events:", len(centers))
-        #print("Number of fix samples:", np.sum(num_samples))
 
         # label the fixations in the dataframe
         df['event'] = 'other'
@@ -264,10 +258,6 @@ def plot_fixations_IVT(df,threshes):
             elif starts[i+1]-ends[i] <= 2:
                 count += 1
                 df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
-        #print(count)
-
-        # # label the saccades using velocity threshold (22 deg/s according to Houpt)
-        # df['event'] = np.where(df.v >= 22, 'sac', df.event)
 
         centers = np.array(centers)
         ax[ncol].scatter(df.x[df.event !='fix'], df.y[df.event!='fix'], s=0.5,label='other')
@@ -284,3 +274,4 @@ def plot_fixations_IVT(df,threshes):
         ncol += 1
     plt.legend()
     plt.show()
+"""

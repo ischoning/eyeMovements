@@ -201,6 +201,36 @@ def clean_sequence(df):
     return df
 
 
+def run_dispersion(df, eye, ws = 0, thresh = 0, method='IDT'):
+    # inspired by Algorithm 1 in A. George, A. Routray and applied to I-DT
+    # 29 may 2021
+
+    mdf = 0.04 # minimum duration fixation threshold (40 ms - Houpt)
+    lastState = 'other'
+    fixStartTime = df.loc[0,'time']
+    fixStartLoc = 0
+    N = len(df)
+    res = ['other']
+    for i in range(1,N):
+        disp = df.loc[i,'d']
+        if disp < thresh:
+            currentState = 'fix'
+            if lastState != currentState:
+                fixStartLoc = i
+                fixStartTime = df.loc[i,'time']
+        else:
+            if lastState == 'fix':
+                duration = df.loc[i,'time']-fixStartTime
+                if duration < mdf:
+                    for j in range(fixStartLoc,i):
+                        res.append('other')
+            currentState = 'other'
+        lastState = currentState
+        res.append(currentState)
+
+    return res
+
+
 def main():
 
     # files
