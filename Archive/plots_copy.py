@@ -163,3 +163,93 @@ def plot(df):
     # plt.xlabel('Amp')
     # plt.ylabel('Vel')
     # plt.show()
+
+
+# 1 june 2021
+
+# def plot_events(df, eye = '', method = ''):
+#
+#     # x, y, d, v, a, del_d = get_feats(df, eye)
+#     x, y, v, a = get_feats(df, eye)
+#
+#     fig, ax = plt.subplots(figsize=pltsize)
+#
+#     ax.plot(df['time'], v, color='red', label = 'velocity')
+#
+#     if 'target_d' in df.columns:
+#         ax.plot(df['time'], df['target_d'], color='black',linewidth =0.5, label = 'target')
+#
+#     # https://matplotlib.org/3.1.1/gallery/lines_bars_and_markers/fill_between_demo.html
+#     trans = mtransforms.blended_transform_factory(ax.transData, ax.transAxes)
+#     min_val = min(v)
+#     max_val = max(v)
+#     ax.fill_between(df['time'], min_val, max_val, where=df.event == 'fix',
+#                     facecolor='green', alpha=0.5, transform=trans, label='fixation')
+#     # ax.fill_between(df['time'], min_val, max_val, where=df.event == 'other',
+#     #                 facecolor='turquoise', alpha=0.5, transform=trans, label='other')
+#     try:
+#         ax.fill_between(df['time'], min_val, max_val, where=df.event == 'smp',
+#                         facecolor='orange', alpha=0.5, transform=trans, label='smooth pursuit')
+#     except: pass
+#     try:
+#         ax.fill_between(df['time'], min_val, max_val, where=df.event == 'sac',
+#                         facecolor='blue', alpha=0.5, transform=trans, label='saccade')
+#     except: pass
+#
+#     ax.legend()
+#     ax.set_title('['+method+'] '+eye+'Event Classification')
+#     ax.set_xlabel('time (ms)')
+#     ax.set_ylabel('deg/s')
+#
+#     plt.show()
+
+""" # ARCHIVED
+def plot_IVT_thresh_results(df, threshes):
+
+    fig, ax = plt.subplots(1,len(threshes), figsize=(16,6))
+
+    ncol = 0
+    for thresh in threshes:
+        samples = [Sample(ind=i, time=df.time[i], x=df.x[i], y=df.y[i]) for i in range(len(df))]
+        stream = ListSampleStream(samples)
+        fixes = Velocity(sampleStream = IntersampleVelocity(stream), threshold = thresh)
+        centers = []
+        num_samples = []
+        starts = []
+        ends = []
+        for f in fixes:
+            centers.append(f.get_center())
+            num_samples.append(f.get_num_samples())
+            starts.append(f.get_start())
+            ends.append(f.get_end())
+
+        # label the fixations in the dataframe
+        df['event'] = 'other'
+        count = 0
+        #print('len(centers):', len(centers))
+        for i in range(len(starts)):
+            df.loc[starts[i]:ends[i], ("event")] = 'fix'
+            # if the end of the data is all fixations
+            if i == len(starts)-1:
+                df.loc[starts[i]:len(starts), ("event")] = 'fix'
+            # if there are only 1 or 2 samples between fixations, combine them
+            elif starts[i+1]-ends[i] <= 2:
+                count += 1
+                df.loc[ends[i]:starts[i+1], ("event")] = 'fix'
+
+        centers = np.array(centers)
+        ax[ncol].scatter(df.x[df.event !='fix'], df.y[df.event!='fix'], s=0.5,label='other')
+        ax[ncol].scatter(df.x[df.event =='fix'], df.y[df.event =='fix'], color='r', s=0.5, label='fix')
+        # ax[ncol].scatter(df.x[df.event == 'sac'], df.y[df.event == 'sac'], color='orange', s=0.5, label='sac')
+        # for i in range(len(centers)):
+        #     plots.circle(centers[i], radius=num_samples[i]*0.5+10)
+        #plt.scatter(centers[:,0], centers[:,1], c='None', edgecolors='r')
+        ax[ncol].set_title('[I-VT] Thresh: '+str(thresh))
+        ax[ncol].set_xlabel('x pixel')
+        ax[ncol].set_ylabel('y pixel')
+        ax[ncol].legend()
+
+        ncol += 1
+    plt.legend()
+    plt.show()
+"""

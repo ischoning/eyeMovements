@@ -22,6 +22,7 @@
 
 from detect.eventstream import EventStream
 from detect.eventstream import EFixation, EOther
+import math
 
 
 class Dispersion(EventStream):
@@ -52,16 +53,28 @@ class Dispersion(EventStream):
         if len(self.window) == 0:
             raise ValueError
 
-        minx = maxx = self.window[0].x
-        miny = maxy = self.window[0].y
+        # minx = maxx = self.window[0].x
+        # miny = maxy = self.window[0].y
+        #
+        # for p in self.window:
+        #     minx = min(minx, p.x)
+        #     maxx = max(maxx, p.x)
+        #     miny = min(miny, p.y)
+        #     maxy = max(maxy, p.y)
+        #
+        # return maxx - minx + maxy - miny
 
+        x0 = self.window[0].x
+        y0 = self.window[0].y
+
+        max_d = 0
         for p in self.window:
-            minx = min(minx, p.x)
-            maxx = max(maxx, p.x)
-            miny = min(miny, p.y)
-            maxy = max(maxy, p.y)
+            d = math.sqrt((p.x - x0)**2 + (p.y - y0)**2)
+            max_d = max(d, max_d)
+            if max_d > self.threshold:
+                return max_d
 
-        return maxx - minx + maxy - miny
+        return max_d
 
     def __next__(self):
         # Fill the window with samples.
